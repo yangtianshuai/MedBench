@@ -1,0 +1,43 @@
+# ==================== 构建产物 ====================
+build/
+build_single/
+dist/
+dist_single/
+dist_app/
+*.spec
+
+# ==================== Python ====================
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ==================== 私有配置（含明文 API Key，切勿提交）====================
+ai_server_config.json
+医析台AI配置.json
+
+# ==================== 用户产出 ====================
+*.mda
+*.log
+
+# ==================== 由 scripts/生成说明文档.py 生成 ====================
+docs/医析台_使用说明.html
+docs/医析台_使用说明.pdf
+
+# ==================== 旧版界面截图（含已废弃品牌，重新截图后请删除本行）====================
+docs/images/
+
+# ==================== 系统 / 编辑器 ====================
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/

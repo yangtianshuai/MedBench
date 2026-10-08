@@ -1,0 +1,64 @@
+# 医析台 MedBench · Streamlit 运行配置 —— 单机使用与服务器部署共用
+#
+# 默认只监听本机回环地址：既不触发 Windows 防火墙「允许访问网络」提示，
+# 也避免局域网内其他机器访问到本机患者数据。
+#
+# 【服务器 / 多人部署】不要修改本文件的 address，而是用命令行覆盖它 ——
+# 这样默认值始终是安全的「只对本机可见」：
+#
+#     streamlit run app.py --server.address 0.0.0.0 --server.port 8501
+#
+# 更稳妥的做法是让 Nginx 对外、Streamlit 保持 127.0.0.1（推荐）：
+#
+#     streamlit run app.py --server.port 8501
+#     # Nginx 反代到 127.0.0.1:8501，并在 Nginx 上做访问认证与 HTTPS
+#
+# 详见 docs/服务器部署说明.md。
+
+[global]
+# 【关键】PyInstaller 打包后路径不含 site-packages，Streamlit 会误判为开发模式，
+# 导致禁止通过命令行/环境变量指定 server.port。这里强制关闭开发模式。
+developmentMode = false
+
+[server]
+# 只绑定本机。命令行 --server.address 可覆盖此值。
+address = "127.0.0.1"
+port = 8501
+headless = true
+
+# 上传文件大小上限（MB）。多人共用时可调大，但要相应评估服务器内存：
+# 每人在线一份数据副本，另有全局共享的读表缓存（见 max_entries 上限）。
+maxUploadSize = 200
+
+# 本地单机运行：保持 CORS 与 XSRF 校验开启。
+# 反向代理后若出现连接异常，用命令行覆盖：--server.enableCORS=false
+enableCORS = true
+enableXsrfProtection = true
+
+# 静态资源服务：本应用无 static 目录，关闭以避免打包后 warning
+enableStaticServing = false
+
+[browser]
+# 关闭 Streamlit 匿名使用统计上报，保证运行信息零外传。
+gatherUsageStats = false
+serverAddress = "127.0.0.1"
+
+[theme]
+# tech-blue 主题
+primaryColor = "#3B82F6"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F8FAFC"
+textColor = "#0F172A"
+font = "sans serif"
+
+[logger]
+level = "warning"
+
+[client]
+# 会话断开后服务端保留状态的时长（秒）。
+# 数据都放在内存里，断开即释放 —— 刷新页面会丢失当前会话的分析状态，
+# 需要保留请用程序内的「项目保存」导出 .mda 文件。
+disconnectedSessionTTL = 300
+
+# 关闭错误弹窗中的源码展示
+showErrorDetails = false
