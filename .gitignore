@@ -1,43 +1,52 @@
-# ==================== 构建产物 ====================
-build/
-build_single/
-dist/
-dist_single/
-dist_app/
-*.spec
+# ────────────────────────────────────────────────
+# 本地运行资产（F6 · docs/12 §7 A4 配套）
+#
+# var/ 里放的是**绝对不能进版本库**的东西：
+#   runtime_config.yaml 运行时配置（历史上存过明文模型 Key / 数据库口令）
+#   askdata.db          元数据库（会话、快照、授权台账，含真实业务内容）
+#   audit.db            审计库（docs/12 §6.2：审计独立存储）
+#   .audit_hmac_key     ★ 审计链的 HMAC 密钥 —— 这是**凭据**：
+#                       它进了版本库，任何人都能重算整条审计链，
+#                       而链的全部意义就在于"没有这把密钥就算不出来"。
+#   *.log / *.err       运行日志
+#   *_admin_check_*.yaml 验收用语义层副本
+# 这些不是"随手忽略"，是安全边界的一部分：一旦 git init 并提交，
+# 密钥会永久留在历史里，删文件也清不掉。
+# ────────────────────────────────────────────────
+var/
+!var/.gitkeep
 
-# ==================== Python ====================
 __pycache__/
 *.py[cod]
 *.egg-info/
-.eggs/
 .venv/
 venv/
 env/
+
+# 打包与分发产物
+dist/
+dist_single/
+dist_single_*/
+build/
+*.spec
+
+# 验收/自动化临时产物
+.playwright-cli/
 .pytest_cache/
-.mypy_cache/
-.ruff_cache/
 .coverage
-htmlcov/
+# 页面可访问性快照（每次验收生成，含界面快照，无保留价值）
+_snap.yml
+*.snap.yml
 
-# ==================== 私有配置（含明文 API Key，切勿提交）====================
-ai_server_config.json
-医析台AI配置.json
+# 容器化部署的环境变量文件（docker compose 会自动读取）
+# ★ 这个文件里放的是 HIS 只读口令与模型 Key，绝不能进版本库；
+#   模板见 .env.example（只有变量名，没有值）
+.env
+.env.local
+!.env.example
 
-# ==================== 用户产出 ====================
-*.mda
-*.log
-
-# ==================== 由 scripts/生成说明文档.py 生成 ====================
-docs/医析台_使用说明.html
-docs/医析台_使用说明.pdf
-
-# ==================== 旧版界面截图（含已废弃品牌，重新截图后请删除本行）====================
-docs/images/
-
-# ==================== 系统 / 编辑器 ====================
-.DS_Store
-Thumbs.db
-desktop.ini
+# 编辑器与系统
 .idea/
 .vscode/
+.DS_Store
+Thumbs.db

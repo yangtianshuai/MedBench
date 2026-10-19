@@ -1,0 +1,334 @@
+# ============================================================
+# 歧义词表 —— 触发反问的规则
+# 支持热更新，无需重启服务。
+#
+# ★ 反问的四个必要条件（缺一不反问）—— v1.1 修订
+#   N1 命中 triggers（或 trigger_on: dept_mentioned）
+#   N2 问题中【没有】explicit_markers（用户已自带消歧信息）
+#   N3 该歧义会实质改变数值：对应口径的 supported 长度 > supported_min
+#      （指标只支持单一口径时不问 —— 问了也没有第二个答案）
+#   N4 上下文中没有已澄清/已记忆的口径（resolved / 用户偏好）
+#   N5 DSL 侧未消歧（dsl_check，如 compare 已指定则不再问同比还是环比）
+#
+# ★ 三条「不反问」的硬规则（优先级高于上面所有触发条件）：
+#   R1 意图为 meta_question（只问定义）/ out_of_scope（超范围）→ 不反问
+#   R2 权限门禁判定为拒绝 → 不反问（先拒绝，且反问会泄露「有这份数据」）
+#   R3 ask_mode: echo_only → 只做口径回显与可切换提示，不打断用户
+#      （用于「本院已有统一默认、差异仅在回显中说明」的口径，
+#        典型教训：AMB-006 若按裸词触发，反问率会接近 100%，产品不可用）
+#
+# ★ 判定顺序（engine/pipeline.py）：
+#   患者级门禁 → LLM 生成 DSL → DSL 校验 → 【口径写回 apply】 → 意图分流
+#   → 权限门禁 → 反问 → 出数
+#   反问必须在权限之后，否则越权问题会先被反问掉（漏放）；
+#   口径写回必须在权限之前，因为口径可能换指标（权限要按最终指标判定）。
+#
+# ============================================================
+# ★★ apply：口径写回契约（v1.2 新增，修 docs/13 §7 C9）★★
+#   问题：用户选了「结算日期」，系统却按默认口径出数 —— 界面显示"已按所选口径重算"
+#         就是撒谎。根因是口径映射没有声明，代码只能把 resolved 用来跳过反问。
+#   原则：**映射声明在语义层，不写死在代码里**（与 ADR-03 同一条理由：
+#         口径是院方的资产，不是工程师的知识）。
+#
+#   写法：
+#     ① 单选字段：  apply: {field: <DSL 路径>, values: {选项文本: 目标取值}}
+#     ② 一次改多处： apply: {set: {选项文本: {<DSL 路径>: 取值, ...}}}
+#     ③ 做不到：    apply: {unresolvable: "整条规则都做不到"} 或
+#                   apply: {unresolvable_values: {选项文本: 原因}}（部分选项做不到）
+#     ④ 等同默认：  apply: {alias_to_default: [选项文本, ...]}
+#                   —— 「这个说法在本院就等于默认口径」，选了不必改动。
+#                   这不是模糊匹配：**逐条列出**院方认可的同义说法，
+#                   没列出来的就按 ③ 处理（拒绝出数并说明），不许猜。
+#
+#   合法 DSL 路径（engine/dsl.py）：
+#     metrics                → 指标码数组（取值必须已在 metric_registry 注册）
+#     time.date_basis        → admit / discharge / settle / visit / operation
+#     time.compare           → none / yoy / mom
+#     time.granularity       → day / week / month / quarter / year
+#     time.range             → 需配 range_type（如 last_n_months）+ 数值
+#     options.dept_basis     → order / exec / belong / admit / discharge
+#     options.dedup          → visits / patients
+#     options.top_n          → 整数
+#     options.order_by       → {metric: "@metric", dir: desc|asc}（@metric = 当前指标）
+#
+#   ★ 未声明映射的选项**不会被静默忽略**：管线会拒绝出数并说明原因，
+#     由用户改选或按默认口径出数（宁可说不会，不可编造 —— docs/11 §1）。
+#   ★ 选项值等于该规则 default 时视为「无需改动」（管线本就按语义层默认口径执行）。
+# ============================================================
+
+version: "1.2"
+max_asks_per_turn: 2        # 一轮最多反问 2 个问题
+
+rules:
+
+  - id: AMB-001
+    name: 门诊量口径
+    triggers: [门诊量, 门诊人数, 门急诊量]
+    # 「门诊人次」已是明确口径，属于消歧标记而非触发词
+    explicit_markers: [有效就诊, 挂号人次, 挂号人数, 门诊人次, 去重人数]
+    ambiguity: 人次 vs 人数；挂号 vs 有效就诊
+    default: 有效就诊人次
+    ask: "请问您要的是【有效就诊人次】还是【挂号人次】？按人次还是去重人数？"
+    options: [有效就诊人次, 挂号人次, 去重人数]
+    apply:
+      field: metrics
+      values:
+        有效就诊人次: op_visit_cnt
+        去重人数: op_patient_cnt
+      unresolvable_values:
+        挂号人次: 本院语义层尚未注册「挂号人次」指标（只有 op_visit_cnt 门诊人次 / op_patient_cnt 门诊人数）
+
+  - id: AMB-002
+    name: 收入范围
+    triggers: [收入, 营收, 毛收入, 业务收入]
+    # 已限定到门诊/住院/全院的，范围歧义已消除；
+    # 「是否含药品」按本院默认口径（含药品）执行并回显，不再打断用户。
+    # 「全院收入」不算消歧：全院口径下仍有「是否含其他收入/财政补助」的歧义
+    explicit_markers: [门诊收入, 住院收入, 医疗收入,
+                       仅门诊, 仅住院, 含药品, 不含药品, 不含其他收入]
+    ambiguity: 门诊/住院/全院；是否含药品；是否含其他收入
+    default: 全院医疗收入（门诊+住院，含药品，不含其他收入）
+    ask: "请问统计范围？【全院】/【仅门诊】/【仅住院】？是否包含药品收入？"
+    options: [全院医疗收入, 仅门诊收入, 仅住院收入]
+    apply:
+      field: metrics
+      values:
+        仅门诊收入: op_revenue
+        仅住院收入: ip_revenue
+      unresolvable_values:
+        全院医疗收入: 全院口径需要同时查两个指标（op_revenue + ip_revenue），而本版本的 SQL 生成器只取 metrics[0]（多指标组合见 docs/11 F3.6，尚未实现）
+
+  - id: AMB-003
+    name: 药占比口径
+    triggers: [药占比, 药品占比, 药品收入占比]
+    explicit_markers: [院内口径, 国家考核口径, 不含中草药, 含中草药]
+    ambiguity: 是否含中草药；门诊住院是否合并
+    default: 院内口径（不含中草药，门诊+住院合并）
+    ask: "药占比按【院内口径（不含中草药）】还是【国家考核口径（含中草药）】？"
+    options: [院内口径, 国家考核口径]
+    apply:
+      # 院内口径 = 本院默认口径（drug_rate 就是不含中草药那一版），选了无需改动
+      alias_to_default: [院内口径]
+      unresolvable_values:
+        国家考核口径: 本院只注册了院内口径的 drug_rate（不含中草药）；含中草药的国家考核口径没有对应指标实现，无法据此出数
+    note: 国家卫健委考核口径含中草药，导出报表时需单独出一份
+
+  - id: AMB-004
+    name: 科室归属口径
+    # ★ 触发器不是词表，而是「问题中提到了具体科室名」（registry.dimensions[dept].enum）：
+    #   -「各科室平均住院日排名」的「各科室」是分组维度，不在枚举内 → 不反问
+    #   -「神经外科平均住院日」点名了科室 → 存在归属歧义 → 反问
+    #   v1.0 曾用裸词表（科室收入/科室工作量...），导致 G0014 这类真正的归属歧义漏反问。
+    trigger_on: dept_mentioned
+    triggers: [科室归属, 归哪个科, 算哪个科, 科室绩效]   # 兜底的显式提问词
+    # N3：只有指标本身支持 ≥2 种归属口径时才问（如四级手术只支持 exec，问了也没用）
+    supported_min: {dept_basis: 2}
+    explicit_markers: [开单科室, 执行科室, 患者归属, 归属科室, 出院科室, 入院科室, 主治科室,
+                       按开单, 按执行, 按归属]
+    ambiguity: 开单科室 / 执行科室 / 患者归属科室
+    default: 患者归属科室
+    ask: "科室口径按【开单科室】、【执行科室】还是【患者归属科室】？"
+    options: [患者归属科室, 开单科室, 执行科室]
+    apply:
+      field: options.dept_basis
+      values:
+        患者归属科室: belong
+        开单科室: order
+        执行科室: exec
+        # 下面两个不是反问选项，但标注/口语里会出现（Golden 集用的就是「出院科室」）：
+        # 声明出来，免得同一件事因为措辞不同被判成「未声明映射」而拒绝出数
+        出院科室: discharge
+        入院科室: admit
+    remember_user_choice: true    # 记住用户偏好，后续默认沿用（F2.2 偏好记忆尚未接线）
+
+  - id: AMB-005
+    name: 时间基准口径
+    # ★ R3：改为「只回显、不反问」。
+    #   本院已对财务类指标统一默认【结算日期】、运营类默认【出院日期】，
+    #   口径差异在回显卡片中明示并可一键切换（IN-01）；
+    #   每次问「按出院还是按结算」会把反问率推高，且用户其实并不关心。
+    ask_mode: echo_only
+    # ★ 只对真正存在实质差异的指标反问：
+    #   「出院人次」「平均住院日」的口径天然是出院日期，反问属于自相矛盾；
+    #   财务类指标（结算日 vs 出院日）差异可达 10%+，才值得反问。
+    triggers: [住院收入, 医疗收入, 业务收入, 住院费用]
+    explicit_markers: [出院日期, 入院日期, 结算日期, 按出院, 按入院, 按结算]
+    ambiguity: 入院日期 / 出院日期 / 结算日期
+    default: 出院日期（财务类指标默认结算日期）
+    ask: "按【出院日期】还是【结算日期】统计？（两者在月末差异可达 10%）"
+    options: [出院日期, 入院日期, 结算日期]
+    # ★ 每个指标的默认口径由 metrics/measures 的 date_basis.default 声明，
+    #   不在这里维护第二份（v1.1 的 conditional_default 已删除：代码从未读它）。
+    apply:
+      field: time.date_basis
+      values:
+        出院日期: discharge
+        入院日期: admit
+        结算日期: settle
+
+  - id: AMB-006
+    name: 月份口径
+    # ★ triggers 不可含「上个月/本月」等时间范围词：
+    #   几乎每个问数都含这些词，会导致反问率接近 100%，产品不可用。
+    #   仅在用户主动提到月历概念时才确认。
+    triggers: [自然月, 财务月, 会计月, 结账月, 财月]
+    explicit_markers: [按自然月, 按财务月, 按会计月]
+    ambiguity: 自然月 vs 医院财务月
+    default: 自然月
+    ask: "按【自然月】还是医院【财务月】（每月 26 日结账）？"
+    options: [自然月, 财务月]
+    apply:
+      alias_to_default: [自然月]
+      unresolvable_values:
+        财务月: 月份口径由院级配置 hospital_profile.yaml 的 hospital.fiscal_month_start_day 决定，会影响全院所有查询，不是问数时可临时切换的口径（要改请走口径变更流程）
+    config_key: hospital.fiscal_month_start_day    # 待接线：当前代码未读取
+
+  - id: AMB-007
+    name: 手术口径
+    triggers: [手术量, 手术例数, 手术台次, 做了多少手术]
+    # 级别已明确的（四级/三级手术）无「主手术 vs 全部操作」歧义
+    explicit_markers: [主手术, 全部手术, 含介入, 不含介入, 四级手术, 三级手术]
+    ambiguity: 主手术 vs 全部操作；是否含介入
+    default: 全部手术（含介入操作）
+    ask: "统计【全部手术操作】还是仅【主手术】？是否包含介入治疗？"
+    options: [全部手术操作, 仅主手术, 全部手术含介入]
+    apply:
+      # surgery_cnt = 手术操作例数（不区分主手术/介入），即「全部手术操作」口径
+      alias_to_default: [全部手术操作, 全部手术含介入, 全部手术操作（含介入）]
+      unresolvable_values:
+        仅主手术: 语义层只有 surgery_cnt / surgery_level4_cnt，没有「仅主手术」的字段区分，无法据此出数
+
+  - id: AMB-008
+    name: 床位分母
+    triggers: [床位使用率, 床位周转, 病床使用]
+    ambiguity: 实际开放床位 vs 编制床位
+    default: 实际开放床位
+    ask: "分母用【实际开放床位】还是【编制床位】？"
+    options: [实际开放床位, 编制床位]
+    apply:
+      alias_to_default: [实际开放床位]
+      unresolvable_values:
+        编制床位: 床位使用率尚未建模（缺按天×科室的床日事实表），编制床位更没有对应度量；见 metric_registry.yaml 末尾「已知未建模指标」
+
+  - id: AMB-009
+    name: 死亡口径
+    triggers: [死亡率, 病死率, 死亡]
+    explicit_markers: [院内死亡, 住院期间死亡, 含出院后, 随访死亡]
+    ambiguity: 院内死亡 vs 含出院后随访死亡；是否含非医嘱离院后死亡
+    default: 院内死亡
+    ask: "指【住院期间死亡】还是包含出院后随访死亡？"
+    options: [住院期间死亡, 含出院后死亡]
+    apply:
+      # inpatient_death_cnt / inpatient_death_rate 就是「住院期间死亡」口径
+      alias_to_default: [住院期间死亡, 院内死亡]
+      unresolvable_values:
+        含出院后死亡: 随访死亡不在 HIS 数据范围内（取不到就是取不到，不做估算）
+
+  - id: AMB-010
+    name: 再入院窗口
+    triggers: [再入院, 重返]
+    explicit_markers: [31日, 31天, 15日, 15天, 7日, 7天, 非计划, 计划性]
+    ambiguity: 计划性 vs 非计划；7日 / 15日 / 31日
+    default: 31日内非计划再入院
+    ask: "统计【非计划】再入院？窗口是【31日】还是【7日/15日】？"
+    options: [31日非计划, 15日非计划, 7日非计划]
+    apply:
+      field: metrics
+      values:
+        31日非计划: unplanned_readmit_31d_rate
+      unresolvable_values:
+        15日非计划: 语义层只注册了 31 日窗口（unplanned_readmit_31d_rate），15 日窗口无对应指标
+        7日非计划: 语义层只注册了 31 日窗口（unplanned_readmit_31d_rate），7 日窗口无对应指标
+
+  - id: AMB-011
+    name: 排名方向
+    # ★ 只命中裸「排名」，方向/条数已说明的不问（v1.0 曾把「最高/最低」也当触发词，
+    #   反而对最明确的表达发起反问）
+    triggers: [排名, 排第几, 排序, 排行榜]
+    explicit_markers: [最高, 最低, 前3, 前5, 前10, 前20, 前50, 前三, 第一, 倒数,
+                       top, Top, TOP]
+    ambiguity: 升序/降序；Top N
+    default: 降序 Top 10
+    ask: "要看【最高】还是【最低】？需要前几名？"
+    options: [最高前10, 最低前10, 全部排序]
+    apply:
+      set:
+        最高前10:
+          options.order_by: {metric: "@metric", dir: desc}
+          options.top_n: 10
+        最低前10:
+          options.order_by: {metric: "@metric", dir: asc}
+          options.top_n: 10
+        全部排序:
+          options.order_by: {metric: "@metric", dir: desc}
+    parse_top_n: true    # 待接线：当前代码未读取（RuleBasedLLM 自己解析「前 N」）
+
+  - id: AMB-012
+    name: 模糊时间
+    triggers: [最近, 近期, 一段时间, 这几个月的]
+    explicit_markers: [近半年, 近三年, 最近3个月, 最近6个月, 最近12个月,
+                       上个月, 上季度, 本月, 今年以来]
+    ambiguity: 具体窗口未定义
+    default: 最近 6 个月
+    ask: "「最近」指最近【6个月】可以吗？也可选 3 个月或 1 年。"
+    options: [最近3个月, 最近6个月, 最近12个月]
+    apply:
+      field: time.range
+      range_type: last_n_months
+      values:
+        最近3个月: 3
+        最近6个月: 6
+        最近12个月: 12
+
+  - id: AMB-013
+    name: 同比环比
+    # 「同比/环比」本身就是消歧标记；真正要问的是只说了「增长/涨了」却没说基准期
+    triggers: [增长, 涨幅, 涨了, 上涨, 下降, 变化幅度, 比去年]
+    explicit_markers: [同比, 环比, 与去年, 上月比, 去年同期]
+    # N5：DSL 里已指定 compare（yoy/mom）即视为已消歧
+    dsl_check: {compare: not_none}
+    ambiguity: 对比基准期
+    default: 同比（去年同期）
+    ask: "【同比】（与去年同期比）还是【环比】（与上一周期比）？"
+    options: [同比, 环比, 两者都要]
+    apply:
+      field: time.compare
+      values:
+        同比: yoy
+        环比: mom
+      unresolvable_values:
+        两者都要: DSL 的对比方式只有 none / yoy / mom 三态，无法同时表达两个基准期（要同时看请分两次问）
+
+  - id: AMB-014
+    name: 患者 vs 人次
+    triggers: [多少人, 多少患者, 患者数, 多少病人]
+    explicit_markers: [人次, 人数, 去重, 人次数]
+    ambiguity: 人次（不去重） vs 人数（去重）
+    default: 人次
+    ask: "统计【人次】（不去重）还是【人数】（按患者去重）？"
+    options: [人次, 人数]
+    apply:
+      field: options.dedup
+      values:
+        人次: visits
+        人数: patients
+
+# ───────── 上下文消歧（命中则不反问）─────────
+# ⚠️ 待接线：当前代码未读取本段（偏好记忆属 F2.2，见 docs/13 §7 C9 与 §9 P1）
+context_resolution:
+  - rule: 用户是科室主任且问题含"我科/本科室/我们科"
+    resolve: dept = 用户所属科室，dept_basis 沿用用户偏好
+  - rule: 用户近期已选择过某口径（30 天内 ≥ 3 次）
+    resolve: 沿用该口径，界面显示可切换提示
+  - rule: 问题中已显式包含口径词（如"按结算日期"）
+    resolve: 直接采用，不反问
+  - rule: 指标本身只支持单一口径（supported 长度为 1）
+    resolve: 直接采用，不反问
+
+# ───────── 反问提示词配置 ─────────
+prompt:
+  max_length: 40
+  tone: 礼貌、专业、不罗列技术术语
+  must_include_default: true
+  output_format: json   # {ask, options, default}
+  forbid: [解释公式, 列举三个以上选项, 反问已知信息]

@@ -1,0 +1,1622 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>管理端 · 医院智能问数</title>
+<style>
+  :root{--bd:#e3e6ea;--pri:#1a5fb4;--ok:#1a7f37;--warn:#9a6700;--bad:#b42318;--bg:#f6f8fa}
+  *{box-sizing:border-box}
+  body{margin:0;font:14px/1.6 "Microsoft YaHei",system-ui,sans-serif;background:var(--bg);color:#1f2328}
+  header{background:#fff;border-bottom:1px solid var(--bd);padding:10px 18px;display:flex;gap:16px;align-items:center}
+  header h1{font-size:16px;margin:0;color:var(--pri)}
+  .spacer{flex:1}
+  a{color:var(--pri);text-decoration:none}
+  .layout{display:flex;max-width:1280px;margin:16px auto;padding:0 16px;gap:16px;align-items:flex-start}
+  nav.side{width:190px;background:#fff;border:1px solid var(--bd);border-radius:8px;padding:6px;flex:none}
+  nav.side button{display:block;width:100%;text-align:left;border:none;background:none;padding:9px 12px;
+    border-radius:6px;cursor:pointer;font:inherit}
+  nav.side button:hover{background:#f0f4f9}
+  nav.side button.on{background:#e8f0fb;color:var(--pri);font-weight:600}
+  main{flex:1;min-width:0}
+  .card{background:#fff;border:1px solid var(--bd);border-radius:8px;padding:14px;margin-bottom:14px}
+  .card h3{margin:0 0 10px;font-size:15px}
+  label{display:block;margin:10px 0 3px;font-size:13px;color:#57606a}
+  input,select{width:100%;padding:8px;border:1px solid var(--bd);border-radius:6px;font:inherit}
+  input:disabled{background:#f0f2f4;color:#8b949e}
+  button{padding:7px 14px;border:1px solid var(--bd);background:#fff;border-radius:6px;cursor:pointer;font:inherit}
+  button.primary{background:var(--pri);color:#fff;border-color:var(--pri)}
+  button:hover{opacity:.9}
+  .row{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
+  .bar{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+  .bar span{background:#f0f4f9;border:1px solid var(--bd);border-radius:4px;padding:2px 8px;font-size:12px}
+  .badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:12px;border:1px solid}
+  .b-ok{color:var(--ok);border-color:var(--ok);background:#e9f7ee}
+  .b-off{color:#57606a;border-color:#57606a;background:#f0f0f0}
+  .b-warn{color:var(--warn);border-color:var(--warn);background:#fff8e6}
+  .muted{color:#57606a;font-size:12px}
+  .warn{background:#fff8e6;border:1px solid #f0d98a;padding:8px 10px;border-radius:6px;margin-top:10px;font-size:13px}
+  .ok{background:#e9f7ee;border:1px solid #9ad3ae;padding:8px 10px;border-radius:6px;margin-top:10px;font-size:13px}
+  table{width:100%;border-collapse:collapse;margin-top:8px;font-size:13px}
+  th,td{border:1px solid var(--bd);padding:5px 8px;text-align:left;vertical-align:top}
+  th{background:#f6f8fa}
+  pre{background:#f6f8fa;border:1px solid var(--bd);padding:8px;overflow:auto;font-size:12px;max-height:260px}
+  .kv{display:grid;grid-template-columns:150px 1fr;gap:4px 10px;font-size:13px}
+  .kv b{font-weight:600;color:#57606a}
+  nav.side .grp{font-size:12px;color:#57606a;padding:12px 12px 4px}
+  .readonly{background:#f6f8fa;border:1px dashed var(--bd);border-radius:6px;padding:8px 10px;margin-top:10px}
+  .readonly .kv{grid-template-columns:120px 1fr}
+  .b-bad{color:var(--bad);border-color:var(--bad);background:#fdeceb}
+  textarea{width:100%;padding:8px;border:1px solid var(--bd);border-radius:6px;font:inherit;min-height:60px}
+  .inline{display:inline;width:auto}
+  /* ── 品牌区：与问数客户端同一套观感（原来只有一行蓝字，像内部后台）── */
+  header .brand{display:flex;align-items:center;gap:10px}
+  header .brand-mark{width:30px;height:30px;border-radius:8px;background:var(--pri);color:#fff;
+    display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700}
+  header h1{font-size:15px;margin:0;color:#1f2328;font-weight:600;line-height:1.25}
+  header .tagline{font-size:11px;color:#57606a;line-height:1.35}
+  .card{box-shadow:0 1px 2px rgba(16,24,40,.04)}
+  input{background:#fbfcfd}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--pri);background:#fff;
+    box-shadow:0 0 0 3px rgba(26,95,180,.10)}
+  .danger{background:#fdeceb;border:1px solid #f0a9a2;padding:8px 10px;border-radius:6px;
+          margin-top:10px;font-size:13px}
+  /* ── 登录 / 改密弹层（与客户端同一套；遮罩不可点关闭）── */
+  .modal{position:fixed;inset:0;background:rgba(23,28,35,.45);display:flex;align-items:center;
+         justify-content:center;z-index:50;padding:20px;overflow:auto}
+  .modal .box{background:#fff;border-radius:12px;width:100%;max-width:400px;padding:26px;
+              box-shadow:0 18px 48px rgba(16,24,40,.20);height:fit-content}
+  .modal .brandrow{display:flex;align-items:center;gap:11px;margin-bottom:18px}
+  .modal .logo{width:36px;height:36px;border-radius:9px;background:var(--pri);color:#fff;
+               display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:700}
+  .modal h2{margin:0;font-size:17px;line-height:1.3;font-weight:600}
+  .modal .sub{font-size:12px;color:#57606a;margin-top:1px}
+  .modal label.field{display:block;font-size:12px;color:#57606a;margin-top:14px}
+  .modal input.field{width:100%;padding:10px 11px;margin-top:5px;border:1px solid var(--bd);
+                     border-radius:7px;background:#fbfcfd;font-size:14px}
+  .modal .actions{display:flex;align-items:center;gap:10px;margin-top:18px}
+  .modal .btn-main{flex:1;background:var(--pri);color:#fff;border-color:var(--pri);
+                   padding:10px 16px;border-radius:7px;font-weight:600}
+  .modal .msg{color:var(--bad);font-size:12px;margin-top:10px;min-height:16px}
+  .modal .foot{margin-top:16px;padding-top:13px;border-top:1px solid var(--bd);
+               font-size:12px;color:#57606a;line-height:1.7}
+  /* 口令"小眼睛"（与客户端同一套）：只切 input.type，值不动 */
+  .modal .pwdwrap{position:relative;display:block;margin-top:5px}
+  .modal .pwdwrap input.field{margin-top:0;padding-right:40px}
+  .modal .pwdwrap .eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);
+                       width:28px;height:28px;display:flex;align-items:center;justify-content:center;
+                       background:none;border:0;border-radius:6px;padding:0;cursor:pointer;
+                       color:#8a929c;opacity:.85}
+  .modal .pwdwrap .eye:hover{background:#f1f4f8;color:#3d444d}
+  .modal .pwdwrap .eye.on{color:var(--pri);opacity:1}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <div class="brand-mark">问</div>
+    <div><h1>管理端</h1></div>
+  </div>
+  <div class="spacer"></div>
+  <span id="admin_identity" class="muted">身份加载中…</span>
+  <a href="/" target="_blank" style="font-size:13px">客户端</a>
+  <a href="/docs" target="_blank" style="font-size:13px">接口文档</a>
+</header>
+
+<!-- 登录 / 改密弹层（与客户端同一套；内容由脚本填充） -->
+<div id="login_modal" class="modal" style="display:none"></div>
+
+<div class="layout">
+  <nav class="side" id="nav">
+    <div class="grp">资产（F5）</div>
+    <button data-p="metric" class="on">指标目录与编辑</button>
+    <button data-p="versions">版本留痕</button>
+    <button data-p="onto">本体总览</button>
+    <button data-p="pmap">物理映射 ★</button>
+    <div class="grp">治理（F5）</div>
+    <button data-p="caliber">口径规则与分组</button>
+    <button data-p="reconcile">口径对账 ★</button>
+    <div class="grp">权限（F6）</div>
+    <button data-p="grants">授权台账 ★</button>
+    <button data-p="localusers">本地账号 ★</button>
+    <button data-p="perm">角色与审计</button>
+    <div class="grp">平台（F8）</div>
+    <button data-p="llm">模型服务</button>
+    <button data-p="ds">数据源</button>
+    <button data-p="cleanup">测试数据清理 ★</button>
+    <div class="grp">运营（F7）</div>
+    <button data-p="ops">运维与时效</button>
+  </nav>
+  <main id="panel"><div class="card">加载中…</div></main>
+</div>
+
+<script>
+let CFG = null;
+let SESS = null;            // /api/security/session
+let ADMIN_UID = null;       // 演示模式下当前身份；生产模式为 null（不自报身份）
+function esc(s){return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function envLock(key){ return (CFG && CFG.env_overridden || []).includes(key); }
+function lockAttr(key){ return envLock(key) ? 'disabled' : ''; }
+function envTag(key){ return envLock(key) ? ' <span class="badge b-warn">已被环境变量接管</span>' : ''; }
+
+document.getElementById('nav').onclick = e => {
+  const b = e.target.closest('button'); if(!b) return;
+  document.querySelectorAll('#nav button').forEach(x=>x.classList.toggle('on', x===b));
+  show(b.dataset.p);
+};
+
+async function jget(p){ return (await fetch(p)).json(); }
+async function jsend(p, method, body){
+  const r = await fetch(p, {method:method, headers:{'Content-Type':'application/json'},
+    body: body===undefined?undefined:JSON.stringify(body)});
+  return r.json();
+}
+// 身份：demo 模式才把 user_id 交给服务端；生产模式由网关注入（12 §2 红线 4）
+function uq(path, params){
+  const q = new URLSearchParams();
+  if (ADMIN_UID) q.set('user_id', ADMIN_UID);
+  for (const [k, v] of Object.entries(params || {})) if (v) q.set(k, v);
+  const s = q.toString();
+  return path + (s ? (path.includes('?') ? '&' : '?') + s : '');
+}
+function withAdmin(body){ if (ADMIN_UID) body.user_id = ADMIN_UID; return body; }
+async function jpostU(path, body){
+  const r = await fetch(uq(path), {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(withAdmin(body || {}))});
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.detail || ('HTTP ' + r.status));
+  return d;
+}
+function operator(){ return ADMIN_UID || 'gateway'; }
+function tsText(ts){
+  return ts ? new Date(ts * 1000).toLocaleString() : '-';
+}
+
+// ── 模型服务 ──
+async function showLlm(){
+  const p = document.getElementById('panel');
+  CFG = await jget(uq('/api/admin/config'));
+  const m = CFG.config.llm || {};
+  const over = envLock('llm.base_url');
+  p.innerHTML = `<div class="card"><h3>模型服务</h3>
+    <div class="bar">
+      <span>配置状态：${(m.base_url && m.api_key)?'已配置':'未配置'}</span>
+      <span>地址：${esc(m.base_url||'-')}</span>
+      <span>模型：${esc(m.model||'-')}</span>
+      <span>超时：${esc(m.timeout||60)}s</span>
+    </div>
+    ${(m.base_url && m.api_key) ? '' :
+      '<div class="warn"><b>未配置模型</b>：问数走<b>规则匹配降级</b>（用语义层中文别名做最长匹配），只覆盖常见问法；一句多指标、复杂表达会落空。</div>'}
+    <label>服务地址 base_url${envTag('llm.base_url')}</label>
+    <input id="llm_base_url" value="${esc(m.base_url||'')}" placeholder="http://院内模型服务/v1" ${lockAttr('llm.base_url')}>
+    <label>API Key${envTag('llm.api_key')}</label>
+    <input id="llm_api_key" type="password" value="" placeholder="${m.api_key?'已配置（留空则不修改）':'未配置'}" ${lockAttr('llm.api_key')}>
+    <label>模型名${envTag('llm.model')}</label>
+    <input id="llm_model" value="${esc(m.model||'')}" placeholder="qwen2.5-72b-instruct" ${lockAttr('llm.model')}>
+    <label>超时（秒）${envTag('llm.timeout')}</label>
+    <input id="llm_timeout" value="${esc(m.timeout||60)}" ${lockAttr('llm.timeout')}>
+    <div class="row">
+      <button class="primary" onclick="saveLlm()">保存并生效</button>
+      <button onclick="testLlm()">测试连通</button>
+    </div>
+    <div id="llm_msg"></div>
+    <div class="muted" style="margin-top:8px">配置文件：${esc(CFG.config_path)}｜环境变量优先级更高，被接管的项在此处只读。</div>
+  </div>`;
+}
+
+async function saveLlm(){
+  const body = {
+    base_url: document.getElementById('llm_base_url').value.trim(),
+    api_key:  document.getElementById('llm_api_key').value,
+    model:    document.getElementById('llm_model').value.trim(),
+    timeout:  parseInt(document.getElementById('llm_timeout').value||'60',10)
+  };
+  const d = await jsend(uq('/api/admin/config/llm'),'PUT',withAdmin(body));
+  if (d.detail) { document.getElementById('llm_msg').innerHTML =
+    `<div class="warn">保存失败：${esc(d.detail)}</div>`; return; }
+  document.getElementById('llm_msg').innerHTML =
+    `<div class="ok">已保存并生效；重建管线。生效项：${(d.applied||[]).join('、')||'无'}</div>`;
+  setTimeout(showLlm, 600);
+}
+async function testLlm(){
+  const d = await jsend(uq('/api/admin/config/llm/test'),'POST',withAdmin({
+    base_url: document.getElementById('llm_base_url').value.trim(),
+    api_key:  document.getElementById('llm_api_key').value,
+    model:    document.getElementById('llm_model').value.trim()
+  }));
+  document.getElementById('llm_msg').innerHTML = d.ok
+    ? `<div class="ok">连通正常（${esc(d.url)}）｜模型回包：${esc(d.reply||'(空)')}</div>`
+    : `<div class="warn">连通失败：${esc(d.error)}<div class="muted">请求地址：${esc(d.url||'-')}</div></div>`;
+}
+
+// ── 数据源 ──
+async function showDs(){
+  const p = document.getElementById('panel');
+  CFG = await jget(uq('/api/admin/config'));
+  const ds = CFG.config.datasource || {};
+  const his = ds.his || {}, ads = ds.ads || {};
+  p.innerHTML = `<div class="card"><h3>数据源</h3>
+    <div class="bar"><span>当前生效：<b>${esc(CFG.active_source)}</b></span>
+      <span>his = 直连 HIS 镜像（Oracle）</span><span>ads = 本地宽表（SQLite）</span></div>
+    <label>启用数据源${envTag('datasource.active')}</label>
+    <select id="ds_active" ${lockAttr('datasource.active')}>
+      <option value="his" ${ds.active==='his'?'selected':''}>his —— 直连 HIS 镜像</option>
+      <option value="ads" ${ds.active==='ads'?'selected':''}>ads —— 本地宽表</option>
+    </select>
+
+    <h3 style="margin-top:16px">HIS 连接</h3>
+    <label>主机${envTag('datasource.his.host')}</label>
+    <input id="his_host" value="${esc(his.host||'')}" placeholder="10.1.33.46" ${lockAttr('datasource.his.host')}>
+    <label>端口${envTag('datasource.his.port')}</label>
+    <input id="his_port" value="${esc(his.port||1521)}" ${lockAttr('datasource.his.port')}>
+    <label>服务名${envTag('datasource.his.service')}</label>
+    <input id="his_service" value="${esc(his.service||'')}" placeholder="oracle10" ${lockAttr('datasource.his.service')}>
+    <label>用户名${envTag('datasource.his.user')}</label>
+    <input id="his_user" value="${esc(his.user||'')}" placeholder="只读账号" ${lockAttr('datasource.his.user')}>
+    <label>密码${envTag('datasource.his.password')}</label>
+    <input id="his_password" type="password" value="" placeholder="${his.password?'已配置（留空则不修改）':'未配置'}" ${lockAttr('datasource.his.password')}>
+
+    <h3 style="margin-top:16px">本地宽表（ADS）</h3>
+    <label>数据库文件路径${envTag('datasource.ads.path')}</label>
+    <input id="ads_path" value="${esc(ads.path||'')}" placeholder="var/ads.db" ${lockAttr('datasource.ads.path')}>
+
+    <div class="row">
+      <label class="inline" style="display:inline-flex;align-items:center;gap:6px;margin:0">
+        <input type="checkbox" id="ds_confirm" class="inline" style="width:auto">
+        我确认切换数据源（会改变所有问数的结果口径）
+      </label>
+      <button class="primary" onclick="saveDs()">保存并重连</button>
+      <button onclick="testDs()">测试连通</button>
+      <button onclick="resetDs()">清空运行时配置</button>
+    </div>
+    <div id="ds_msg"></div>
+    <div class="warn">数据源只读：HIS 侧会话级 <code>SET TRANSACTION READ ONLY</code>，且写操作/DDL 关键字在执行前被拦截。<br>
+      <b>切换数据源需要二次确认</b>（服务端强校验）：his = 直连镜像、ads = 本地宽表，
+      两者不是同一份数据，口径会随之一变。</div>
+  </div>`;
+}
+
+async function saveDs(){
+  const body = {
+    active: document.getElementById('ds_active').value,
+    his: {host:document.getElementById('his_host').value.trim(),
+         port:parseInt(document.getElementById('his_port').value||'1521',10),
+         service:document.getElementById('his_service').value.trim(),
+         user:document.getElementById('his_user').value.trim(),
+         password:document.getElementById('his_password').value},
+    ads: {path:document.getElementById('ads_path').value.trim()}
+  };
+  const box = document.getElementById('ds_confirm');
+  if (!box || !box.checked) {
+    document.getElementById('ds_msg').innerHTML =
+      '<div class="warn">请先勾选「我确认切换数据源」：这一步防的不是攻击者，而是手滑 —— 口径悄悄换了、界面看着一切正常，是最难查的事故。</div>';
+    return;
+  }
+  body.confirm = '我确认切换数据源';
+  const d = await jsend(uq('/api/admin/config/datasource'),'PUT',withAdmin(body));
+  if (d.detail) { document.getElementById('ds_msg').innerHTML =
+    `<div class="warn">保存失败：${esc(d.detail)}</div>`; return; }
+  document.getElementById('ds_msg').innerHTML =
+    `<div class="ok">已保存，连接已重建。生效项：${(d.applied||[]).join('、')||'无'}｜当前数据源：<b>${esc(d.active_source)}</b></div>`;
+}
+async function testDs(){
+  const d = await jsend(uq('/api/admin/config/datasource/test'),'POST',withAdmin({
+    active: document.getElementById('ds_active').value,
+    ads: {path: document.getElementById('ads_path').value.trim()}
+  }));
+  document.getElementById('ds_msg').innerHTML = d.ok
+    ? `<div class="ok">连通正常：${esc(d.active)}｜${d.active==='ads'? ('行数 '+d.rows+'，方言 '+d.dialect) : (esc(d.user||'')+' @ '+esc(d.dsn||''))}</div>`
+    : `<div class="warn">连通失败：${esc(d.error)}</div>`;
+}
+async function resetDs(){
+  const d = await jsend(uq('/api/admin/config/reset'),'POST',withAdmin({}));
+  document.getElementById('ds_msg').innerHTML = d.detail
+    ? `<div class="warn">失败：${esc(d.detail)}</div>`
+    : `<div class="ok">已清空运行时配置，回落到环境变量/默认值。</div>`;
+  setTimeout(showDs, 500);
+}
+
+// ── 指标目录与编辑（F5.1 / F5.2 / F5.6）──
+let METRICS = [];
+let CUR = null;          // 正在编辑的指标（含只读字段）
+let OPTS = {};           // 该指标可声明的口径可选值（来自 measure）
+
+async function showMetrics(){
+  const p = document.getElementById('panel');
+  const kw = (document.getElementById('m_kw')||{}).value || '';
+  const dom = (document.getElementById('m_dom')||{}).value || '';
+  const d = await jget(uq('/api/semantic/metrics', {keyword: kw, domain: dom}));
+  METRICS = d.metrics || [];
+  const domains = [...new Set([...METRICS.map(m => m.domain).filter(Boolean)])].sort();
+  const types = [...new Set([...METRICS.map(m => m.type).filter(Boolean)])].sort();
+  window.MDOMS = domains; window.MTYPES = types;
+  p.innerHTML = `<div class="card"><h3>指标目录</h3>
+    <div class="muted">口径是人工资产：每个指标必须有<b>一个</b>说了算的责任人；变更留痕；有争议先下线，不硬撑。</div>
+    <div class="row">
+      <input id="m_kw" class="inline" style="max-width:240px" placeholder="按编码 / 名称 / 别名搜" value="${esc(kw)}">
+      <select id="m_dom" class="inline" style="max-width:180px">
+        <option value="">全部域</option>
+        ${domains.map(x => `<option value="${esc(x)}" ${x === dom ? 'selected' : ''}>${esc(x)}</option>`).join('')}
+      </select>
+      <button onclick="showMetrics()">筛选</button>
+      <button class="primary" onclick="editMetric('')">＋ 新增指标</button>
+    </div>
+    <div class="bar"><span>共 ${d.count} 个</span><span>语义层版本 ${esc(d.registry_version || '-')}</span>
+      <span>${METRICS.filter(m => !m.owner).length} 个未指定责任人</span></div>
+    <table><tr><th>编码</th><th>名称</th><th>域 / 类型</th><th>敏感级</th><th>责任人</th><th>状态</th><th>默认口径</th><th>操作</th></tr>
+    ${METRICS.map(m => `<tr>
+      <td>${esc(m.code)}</td>
+      <td>${esc(m.name)}<div class="muted">${esc((m.alias||[]).slice(0,4).join('、'))}</div></td>
+      <td>${esc(m.domain || '-')}<div class="muted">${esc(m.type || '-')}</div></td>
+      <td>${sensTag(m.sensitivity)}</td>
+      <td>${m.owner ? esc(m.owner) : '<span class="badge b-bad">未指定</span>'}</td>
+      <td>${m.status === 'online' ? '<span class="badge b-ok">在线</span>' : '<span class="badge b-off">已下线</span>'}</td>
+      <td class="muted">${esc(m.default_date_basis || '-')} / ${esc(m.default_dept_basis || '-')}</td>
+      <td>
+        <button onclick="editMetric('${esc(m.code)}')">编辑</button>
+        <button onclick="askRetire('${esc(m.code)}')">下线</button>
+      </td></tr>`).join('')}
+    </table>
+  </div>
+  <div id="editor"></div>`;
+}
+
+// 敏感级不是"填个标签"：这里把三级的可见性后果写在旁边（03 §2.0），
+// 因为 12 §1.2 S9 的坑就是"执行层与目录层对 internal 的理解不一致"。
+function sensTag(s){
+  const map = {public: 'b-ok', internal: 'b-warn', restricted: 'b-bad'};
+  const label = {public: '公开', internal: '院内', restricted: '受限'};
+  return `<span class="badge ${map[s] || 'b-off'}">${label[s] || esc(s || '-')}</span>`;
+}
+function sensExplain(s){
+  const t = {
+    public: '任何登录用户都能问、能看（如"出院人次"的总量）。',
+    internal: '需要角色授权（<code>visible_metrics</code>）；未授权角色在指标目录里看不到它。',
+    restricted: '受限指标：能看的人**也不能**据此下钻到个人（维度授权独立判定），且默认不出患者级明细。'
+  };
+  return t[s] || '（未设置敏感级）';
+}
+function editMetric(code){
+  if (!code) {
+    CUR = {code:'', name:'', definition:'', formula:'', domain:(window.MDOMS||[])[0] || '',
+           type:(window.MTYPES||[])[0] || 'count', alias:[], sensitivity:'public',
+           status:'online', owner:'', supported_date_basis:[], supported_dept_basis:[]};
+    OPTS = {};
+    renderEditor(true);
+    return;
+  }
+  // 返回 Promise：调用方（onclick 或验收脚本）都能等渲染完成
+  return jget(uq('/api/semantic/metrics/' + encodeURIComponent(code))).then(d => {
+    CUR = d.metric || {};
+    OPTS = {date: d.supported_date_basis || [], dept: d.supported_dept_basis || []};
+    CUR._versions = (d.versions || []).length;
+    renderEditor(false);
+  });
+}
+function renderEditor(isNew){
+  const box = document.getElementById('editor');
+  if (!box) return;
+  const m = CUR || {};
+  const checks = (group, arr, cur) => (arr || []).map(v => `<label class="inline" style="display:inline-block;margin-right:12px">
+    <input type="checkbox" class="inline" data-basis="${group}" data-k="${esc(v)}"
+      ${(cur || []).includes(v) ? 'checked' : ''}> ${esc(v)}</label>`).join('')
+    || '<span class="muted">该指标所属 measure 未声明可选值</span>';
+  box.innerHTML = `<div class="card"><h3>${isNew ? '新增指标' : '编辑指标 · ' + esc(m.code)}</h3>
+    ${isNew ? `<div class="warn">新建的只是**元数据条目**：要能真正出数，还需要在语义层绑定量度（<code>measure</code>）
+      与物理映射。这两项目前只能改 YAML（接口待补，docs/13 §7 C4），所以新指标先落"定义与责任人"，
+      再走一次配置评审。</div>` : ''}
+    <label>指标编码${isNew ? '（必填，建议英文小写+下划线）' : '（编辑时只读：改码 = 换指标）'}</label>
+    <input id="mc" value="${esc(m.code||'')}" ${isNew ? '' : 'disabled'}>
+    <label>名称</label>
+    <input id="mn" value="${esc(m.name||'')}">
+    <label>定义（这是用户点「问口径」时看到的原文，会读出来，所以写人话）</label>
+    <textarea id="mdef">${esc(m.definition||'')}</textarea>
+    <label>公式（只展示，<b>界面与系统都不解析</b> —— 口径推导属 LLM 禁区，ADR-03）</label>
+    <textarea id="mfor">${esc(m.formula||'')}</textarea>
+    <label>域</label>
+    <input id="mdom" class="inline" style="max-width:260px" value="${esc(m.domain||'')}" list="doms">
+    <datalist id="doms">${(window.MDOMS||[]).map(x => `<option value="${esc(x)}">`).join('')}</datalist>
+    <label>类型</label>
+    <input id="mtp" class="inline" style="max-width:200px" value="${esc(m.type||'')}" list="tps">
+    <datalist id="tps">${(window.MTYPES||[]).map(x => `<option value="${esc(x)}">`).join('')}</datalist>
+    <label>别名（逗号分隔；这是召回质量的实际来源，多写口语说法）</label>
+    <input id="mal" value="${esc((m.alias||[]).join('、'))}">
+    <fieldset style="border:1px dashed var(--bd);border-radius:6px;margin-top:12px">
+      <legend class="muted">可切换口径（F2.2：客户端口径抽屉的可选项只来自这里）</legend>
+      ${isNew ? '<div class="warn">新建指标还不能声明口径可选项：可选值随所属 measure 而定，先绑定 measure（C4）。</div>'
+              : `<div>时间口径：${checks('date', OPTS.date, m.supported_date_basis)}</div>
+                 <div style="margin-top:6px">科室口径：${checks('dept', OPTS.dept, m.supported_dept_basis)}</div>`}
+    </fieldset>
+    <label>敏感级</label>
+    <select id="msen">
+      ${['public','internal','restricted'].map(s => `<option value="${s}" ${m.sensitivity === s ? 'selected' : ''}>${{public:'公开',internal:'院内',restricted:'受限'}[s]}</option>`).join('')}
+    </select>
+    <div class="muted" id="msen_exp">${sensExplain(m.sensitivity || 'public')}</div>
+    <label>责任人（必填：每个指标有且仅有一个说了算的人）</label>
+    <input id="mow" value="${esc(m.owner||'')}" placeholder="如 医务处 张主任">
+    <label>上线状态</label>
+    <select id="mst">
+      <option value="online" ${m.status !== 'offline' ? 'selected' : ''}>online（可被检索与出数）</option>
+      <option value="offline" ${m.status === 'offline' ? 'selected' : ''}>offline（已下线）</option>
+    </select>
+    <label>变更说明（会写进版本记录，建议填）</label>
+    <input id="mnote" placeholder="如：按 2026-10 口径确认会决议，修正定义表述">
+    <div class="readonly">
+      <div class="muted">以下字段**来自语义层/物理映射，界面不可编辑**（改了它指标就查不出数，但也不会破坏其它字段）：</div>
+      <div class="kv" style="margin-top:6px">
+        <b>绑定度量 measure</b><span>${esc(m.measure || '—（未绑定：该指标目前无法出数）')}</span>
+        <b>可用维度</b><span>${esc((m.dimensions||[]).join('、') || '—')}</span>
+        <b>默认时间口径</b><span>${esc(m.default_date_basis || '-')}</span>
+        <b>默认科室口径</b><span>${esc(m.default_dept_basis || '-')}</span>
+        <b>版本条数</b><span>${isNew ? '—' : (m._versions || 0) + ' 条（见「版本留痕」）'}</span>
+      </div>
+    </div>
+    <div class="row">
+      <button class="primary" onclick="saveMetric(${isNew})">保存</button>
+      ${isNew ? '' : `<button onclick="askRetire('${esc(m.code)}')">下线（需填原因）</button>`}
+      <button onclick="document.getElementById('editor').innerHTML=''">收起</button>
+    </div>
+    <div id="editor_msg"></div>
+  </div>`;
+  const sen = document.getElementById('msen');
+  if (sen) sen.onchange = () => { document.getElementById('msen_exp').innerHTML = sensExplain(sen.value); };
+}
+async function saveMetric(isNew){
+  const msg = document.getElementById('editor_msg');
+  const val = id => (document.getElementById(id) || {}).value || '';
+  const aliases = val('mal').split(/[、,，\s]+/).map(s => s.trim()).filter(Boolean);
+  const body = {
+    code: val('mc').trim(), name: val('mn').trim(), definition: val('mdef').trim(),
+    formula: val('mfor').trim(), domain: val('mdom').trim(), type: val('mtp').trim(),
+    alias: aliases, sensitivity: val('msen'), owner: val('mow').trim(),
+    status: val('mst'), operator: operator(), change_note: val('mnote'),
+  };
+  // 口径多选：只在非新建时提交（新建时这些 checkbox 不存在，提交 null = 保持原值）
+  if (!isNew) {
+    body.supported_date_basis = Array.from(document.querySelectorAll('input[type=checkbox][data-basis=date]:checked')).map(x => x.getAttribute('data-k'));
+    body.supported_dept_basis = Array.from(document.querySelectorAll('input[type=checkbox][data-basis=dept]:checked')).map(x => x.getAttribute('data-k'));
+  }
+  if (!body.code || !body.name) { msg.innerHTML = '<div class="warn">编码与名称必填。</div>'; return; }
+  if (!body.owner) {
+    // 责任人必填不是"表单校验好看"：没有责任人的指标，口径争议时没人能拍板
+    msg.innerHTML = '<div class="warn">必须填写责任人：没有责任人的指标，口径有争议时没人能拍板（后端也会拒）。</div>';
+    return;
+  }
+  try {
+    const d = await jpostU('/api/semantic/metrics', body);
+    msg.innerHTML = `<div class="ok">已保存（${esc(d.action)}，版本 ${esc(d.version)}）；
+      变更字段：${(d.changed||[]).map(esc).join('、') || '无实质变化'}</div>`;
+    setTimeout(showMetrics, 800);
+  } catch (e) {
+    msg.innerHTML = `<div class="warn">保存失败：${esc(e.message)}</div>`;
+  }
+}
+function askRetire(code){
+  const box = document.getElementById('editor') || document.getElementById('panel');
+  box.insertAdjacentHTML('afterbegin', `<div class="card" id="retire_box"><h3>下线指标 ${esc(code)}</h3>
+    <div class="muted">有争议先下线、不硬撑（08 R1）。下线后该指标不再被检索与出数，历史快照不受影响。</div>
+    <label>下线原因（必填，会写进版本记录）</label>
+    <input id="retire_reason" placeholder="如：与财务口径冲突，待口径确认会拍板">
+    <div class="row"><button class="primary" onclick="doRetire('${esc(code)}')">确认下线</button>
+      <button onclick="document.getElementById('retire_box').remove()">取消</button></div>
+    <div id="retire_msg"></div></div>`);
+}
+async function doRetire(code){
+  const reason = ((document.getElementById('retire_reason')||{}).value || '').trim();
+  const msg = document.getElementById('retire_msg');
+  if (reason.length < 4) {
+    // 后端 RetireRequest.reason 默认空串，会静默写成"下线" —— 界面这里必须拦住
+    msg.innerHTML = '<div class="warn">请填写下线原因（至少 4 个字）：原因将来是口径争议的证据。</div>';
+    return;
+  }
+  try {
+    const d = await jsend(uq(`/api/semantic/metrics/${encodeURIComponent(code)}/retire`), 'POST',
+      withAdmin({operator: operator(), reason: reason}));
+    if (d.detail) throw new Error(d.detail);
+    msg.innerHTML = `<div class="ok">已下线：${esc(code)}（${esc(d.status)}）</div>`;
+    setTimeout(showMetrics, 800);
+  } catch (e) {
+    msg.innerHTML = `<div class="warn">下线失败：${esc(e.message)}</div>`;
+  }
+}
+
+// ── 版本留痕（F5.2）──
+async function showVersions(){
+  const p = document.getElementById('panel');
+  const code = (document.getElementById('v_code')||{}).value || '';
+  const d = await jget(uq('/api/semantic/versions', {code: code, limit: 100}));
+  const list = Array.isArray(d) ? d : [];
+  p.innerHTML = `<div class="card"><h3>版本留痕</h3>
+    <div class="muted">谁改的、什么时候、改了什么、变更说明。<b>审批流尚未实现</b>：当前是"留痕 + 事后可查"，
+      多级审批需等与院内 OA/工作流对接（本页不假装有审批按钮）。</div>
+    <div class="row"><input id="v_code" class="inline" style="max-width:240px" placeholder="按指标编码过滤" value="${esc(code)}">
+      <button onclick="showVersions()">查询</button></div>
+    <div class="bar"><span>${list.length} 条</span><span>最多显示 100 条</span></div>
+    <table><tr><th>时间</th><th>指标</th><th>版本</th><th>操作人</th><th>变更说明</th><th>定义摘要</th></tr>
+    ${list.map(v => `<tr>
+      <td>${tsText(v.ts)}</td><td>${esc(v.metric_code)}</td><td>${esc(v.version)}</td>
+      <td>${esc(v.operator)}</td><td>${esc(v.change_note)}</td>
+      <td class="muted">${esc((v.definition || '').slice(0, 60))}</td></tr>`).join('')}
+    </table></div>`;
+}
+
+// ── 口径对账（F5.7）──
+async function showReconcile(){
+  const p = document.getElementById('panel');
+  const d = await jget(uq('/api/semantic/reconcile', {domain: (document.getElementById('rc_dom')||{}).value || '住院'}));
+  const st = d.benchmark_state || {};
+  const ready = d.status !== 'pending_config';
+  p.innerHTML = `<div class="card"><h3>口径对账（拿 HIS 报表层做黄金基准）</h3>
+    <div class="muted">对得上 → 说明我们与 HIS 对口径的理解一致；对不上 → 差异就是口径争议的证据，
+      比在会上争论有效得多。</div>
+    <div class="bar">
+      <span>域：${esc(d.domain)}</span>
+      <span>状态：${ready ? '<span class="badge b-ok">可对账</span>' : '<span class="badge b-warn">待配置映射</span>'}</span>
+      <span>基准表：${esc(d.benchmark_source || '-')}</span>
+      <span>基准最新数据：${esc(st.last_data_date || '未探测')}（${esc(st.freshness || '-')}）</span>
+    </div>
+    ${ready ? '' : `<div class="warn"><b>当前还出不了对比表。</b>${esc(d.how || '')}
+      <div class="muted" style="margin-top:6px">缺的是信息科对 <code>ITEM_CODE ↔ 指标码</code> 的确认 ——
+        机器猜不出来，也不该猜：猜错就会拿两个不同口径的数去"对账"，反而制造假差异。</div></div>`}
+    <div class="readonly"><div class="kv">
+      <b>基准数据来源</b><span>${esc(d.benchmark_source || '-')}</span>
+      <b>基准时效</b><span>${esc(d.note || '-')}</span>
+      <b>对账口径</b><span>与线上出数读同一份配置（科室分组 / 口径规则），不会各说各话</span>
+    </div></div>
+    <div class="row"><button onclick="showReconcile()">重新检测</button>
+      <button onclick="document.getElementById('rc_help').style.display='block'">对账怎么配</button></div>
+    <div id="rc_help" style="display:none" class="readonly">
+      <div class="muted">1. 信息科在 HIS 报表层确认 <code>RPT_DEPT_DAY.ITEM_CODE</code> 与本产品指标码的对应关系；<br>
+      2. 用 <code>scripts/reconcile_his.py</code> 跑一次，差异会定位到统计科室级；<br>
+      3. 差异逐条定性（口径不同 / 映射错 / 确实是数据问题），结论写进口径确认会纪要 —— <b>不自动改数</b>。</div>
+    </div>
+  </div>`;
+}
+
+// ── 授权台账（F6.2 · docs/12 §4.2）──
+//   这一页存在的理由：授权必须**每天都能改得动**。roles.yaml 是代码配置，
+//   改一次要走发布流程；而转岗/离职每天都在发生。配置改不动日常，
+//   日常就会绕过配置 —— 最后没人说得清"这个人为什么还有权限"。
+function scopeText2(v){
+  if (v == null) return '未启用';
+  if (!v.length) return '无授权';
+  return v.includes('*') ? '全院' : v.join('、');
+}
+function remainText(ts){
+  if (!ts) return '长期（需定期复核）';
+  const d = Math.floor((ts - Date.now()/1000) / 86400);
+  if (d < 0) return '已过期';
+  if (d <= 14) return `<span class="badge b-warn">${d} 天后到期</span>`;
+  return `${d} 天后到期`;
+}
+async function showGrants(){
+  const p = document.getElementById('panel');
+  const [d, lg] = await Promise.all([
+    jget(uq('/api/security/grants', {include_inactive: false})),
+    jget(uq('/api/security/grants/log', {limit: 40}))
+  ]);
+  const st = d.stats || {};
+  const rows = d.grants || [];
+  const chain = lg.chain || {};
+  const mig = (st.yaml_only_users || []).length;
+  p.innerHTML = `<div class="card"><h3>授权台账（谁能看哪些科室）</h3>
+    <div class="bar">
+      <span>授权来源档位：<b>${esc(st.authz_from || '-')}</b></span>
+      <span>有效授权：<b>${st.active_grants || 0}</b> 条</span>
+      <span>仍只在 YAML 里（未迁移）：<b>${mig}</b> 人</span>
+      <span>即将到期（14 天内）：<b>${(st.expiring_soon||[]).length}</b> 人</span>
+    </div>
+    ${st.authz_from === 'table'
+      ? `<div class="ok">严格模式（<code>ASK_AUTHZ_FROM=table</code>）：台账是唯一来源，
+         台账里没有就是无授权 —— 不会因为 YAML 里忘了删而留下"幽灵账号"。</div>`
+      : `<div class="warn"><b>迁移期双读（${esc(st.authz_from || 'auto')}）</b>：
+         台账里没有的人会回落到 <code>roles.yaml</code> 的名单。迁移完成、覆盖率到 100% 后
+         应切到 <code>ASK_AUTHZ_FROM=table</code> 收敛 —— 否则"从台账里删掉某人"并不会真的收回权限。</div>`}
+    ${mig ? `<div class="muted">仍只在 YAML 里：${esc((st.yaml_only_users||[]).join('、'))}</div>` : ''}
+    <div class="warn">授权台账是<b>唯一事实来源</b>（角色能做什么仍由 <code>roles.yaml</code> 定义）。
+      ★ 台账是"谁在哪个科室、什么岗位"的名册，本身就是敏感信息 —— 只有管理员能看。</div>
+
+    <table><tr><th>工号</th><th>角色</th><th>科室范围</th><th>院区</th>
+      <th>到期</th><th>来源 / 依据</th><th>操作</th></tr>
+    ${rows.map(g => `<tr>
+      <td>${esc(g.user_id)}</td>
+      <td>${esc(g.role)}</td>
+      <td>${esc(scopeText2(g.dept_scope))}</td>
+      <td class="muted">${esc(scopeText2(g.campus_scope))}</td>
+      <td>${remainText(g.valid_to)}</td>
+      <td class="muted">${esc(g.source || '-')} / ${esc(g.source_ref || '-')}</td>
+      <td><button onclick="revokeGrant('${esc(g.user_id)}')">撤销</button></td>
+    </tr>`).join('') || '<tr><td colspan="7" class="muted">台账为空</td></tr>'}
+    </table>
+
+    <h3 style="margin-top:18px">按工号授权 / 变更</h3>
+    <div class="row">
+      <input id="g_uid" placeholder="工号" style="max-width:120px">
+      <input id="g_role" placeholder="角色码（须已在 roles.yaml 定义）" style="max-width:220px">
+      <input id="g_dept" placeholder="科室码，逗号分隔；* = 全院；留空 = 无授权" style="max-width:280px">
+      <input id="g_days" placeholder="有效期（天）" value="365" style="max-width:120px">
+    </div>
+    <div class="row">
+      <input id="g_ref" placeholder="依据（工单号 / 组织架构版本 / 备案号，必填）" style="max-width:420px">
+      <button class="primary" onclick="putGrant()">授权 / 变更</button>
+    </div>
+    <div id="g_msg"></div>
+
+    <h3 style="margin-top:18px">组织架构同步（迁移 / 增量）</h3>
+    <div class="muted">把 <code>roles.yaml</code> 的名单迁进台账，或按院方组织架构增量刷新。
+      <b>先预览，再执行</b> —— 默认只出计划、不写库。</div>
+    <div class="row">
+      <input id="g_sync_ref" placeholder="依据（组织架构版本号 / 工单号，必填）" style="max-width:420px">
+      <button onclick="syncPreview()">预览计划</button>
+      <label class="inline" style="display:inline-flex;align-items:center;gap:6px;margin:0">
+        <input type="checkbox" id="g_sync_confirm" class="inline" style="width:auto">
+        我确认写入授权台账
+      </label>
+      <button class="primary" onclick="syncApply()">执行同步</button>
+    </div>
+    <div id="g_sync_msg"></div>
+    <div class="muted" style="margin-top:6px">从院方导出的组织架构文件（CSV/JSON）同步请在服务器上跑
+      <code>python scripts/sync_authz.py --source file --file ...</code>：
+      接口不接受调用方指定的文件路径（否则等于开了个任意文件读取口）。</div>
+
+    <h3 style="margin-top:18px">变更留痕（只追加）</h3>
+    ${chain.ok
+      ? `<div class="ok">变更链校验通过（${chain.checked} 条）</div>`
+      : `<div class="warn">变更链异常：${esc(chain.reason || '')} @ ${esc(String(chain.broken_at))}</div>`}
+    <div class="muted">${esc(chain.note || '')}</div>
+    <table><tr><th>时间</th><th>谁改的</th><th>改了谁</th><th>动作</th><th>内容</th><th>依据</th></tr>
+    ${(lg.log||[]).map(x => `<tr>
+      <td class="muted">${esc(tsText(x.ts))}</td>
+      <td>${esc(x.actor || '-')}</td>
+      <td>${esc(x.grantee || '-')}</td>
+      <td>${esc(x.action)}</td>
+      <td class="muted">${esc(x.detail || '')}</td>
+      <td class="muted">${esc(x.source_ref || '-')}</td>
+    </tr>`).join('') || '<tr><td colspan="6" class="muted">暂无变更</td></tr>'}
+    </table>
+  </div>`;
+}
+async function putGrant(){
+  const box = document.getElementById('g_msg');
+  const deptRaw = document.getElementById('g_dept').value.trim();
+  const dept = deptRaw === '' ? [] : deptRaw.split(',').map(s=>s.trim()).filter(Boolean);
+  try {
+    const d = await jpostU('/api/security/grants', {
+      user_id: document.getElementById('g_uid').value.trim(),
+      role: document.getElementById('g_role').value.trim(),
+      dept_scope: dept,
+      valid_days: parseInt(document.getElementById('g_days').value||'365',10),
+      ref: document.getElementById('g_ref').value.trim(),
+      reason: '管理端手动授权'
+    });
+    box.innerHTML = `<div class="ok">已${d.action === 'grant' ? '新增' : '变更'}授权（${esc(d.grant_id)}）</div>`;
+    setTimeout(showGrants, 700);
+  } catch (e) {
+    box.innerHTML = `<div class="warn">未写入：${esc(String(e.message||e))}</div>`;
+  }
+}
+async function revokeGrant(uid){
+  const ref = prompt(`撤销 ${uid} 的授权。\n依据（工单号 / 离职单号，必填）：`);
+  if (ref === null) return;
+  const reason = prompt('撤销原因（如：离职 / 转岗 / 审计要求）：') || '管理端撤销';
+  try {
+    await jpostU('/api/security/grants/revoke', {user_id: uid, reason: reason, ref: ref});
+    setTimeout(showGrants, 400);
+  } catch (e) {
+    alert('撤销失败：' + String(e.message||e));
+  }
+}
+async function syncPreview(){
+  const box = document.getElementById('g_sync_msg');
+  try {
+    const d = await jpostU('/api/security/grants/sync', {
+      source: 'yaml', ref: document.getElementById('g_sync_ref').value.trim(), apply: false
+    });
+    const change = (d.plan||[]).filter(x => x.action !== 'keep');
+    box.innerHTML = `<div class="readonly"><b>计划（未写库）</b>：
+      读取 ${d.read}　映射成功 ${d.mapped}　新增 ${d.counts.grant||0}　
+      变更 ${d.counts.update||0}　不变 ${d.counts.keep||0}　撤销 ${d.counts.revoke||0}
+      <table><tr><th>动作</th><th>工号</th><th>角色</th><th>科室范围</th><th>说明</th></tr>
+      ${change.map(x => `<tr><td>${esc(x.action)}</td><td>${esc(x.user)}</td>
+        <td>${esc(x.role)}</td><td>${esc(scopeText2(x.dept_scope))}</td>
+        <td class="muted">${esc(x.why)}</td></tr>`).join('') ||
+        '<tr><td colspan="5" class="muted">没有需要变更的条目</td></tr>'}
+      </table></div>`;
+  } catch (e) {
+    box.innerHTML = `<div class="warn">预览失败：${esc(String(e.message||e))}</div>`;
+  }
+}
+async function syncApply(){
+  const box = document.getElementById('g_sync_msg');
+  const ck = document.getElementById('g_sync_confirm');
+  if (!ck || !ck.checked) {
+    box.innerHTML = '<div class="warn">请先勾选「我确认写入授权台账」：这一步防的不是攻击者，是手滑。</div>';
+    return;
+  }
+  try {
+    const d = await jpostU('/api/security/grants/sync', {
+      source: 'yaml', ref: document.getElementById('g_sync_ref').value.trim(),
+      apply: true, confirm: '我确认写入授权台账'
+    });
+    box.innerHTML = `<div class="ok">已写入：新增 ${d.result.grant}　变更 ${d.result.update}
+      ｜台账现状：有效 ${d.stats.active_grants} 条，仍只在 YAML 里 ${(d.stats.yaml_only_users||[]).length} 人</div>`;
+    setTimeout(showGrants, 900);
+  } catch (e) {
+    box.innerHTML = `<div class="warn">执行失败：${esc(String(e.message||e))}</div>`;
+  }
+}
+
+// ── 本地账号（F6.1 兜底 · docs/12 §3.6）──
+//   ★ 这一页只维护「你是谁」；「你能看哪些科室」在授权台账页 —— 两页独立，
+//     否则 SSO 一上线就会出现"两套权限谁生效"的经典事故。
+let LU_FLASH = '';
+const LU_BADGE = s => s === 'active' ? '<span class="badge b-ok">启用</span>'
+  : s === 'locked' ? '<span class="badge b-bad">锁定</span>'
+  : '<span class="badge b-warn">停用</span>';
+
+async function showLocalUsers(){
+  const p = document.getElementById('panel');
+  const d = await jget(uq('/api/security/local/users'));
+  const st = d.stats || {}, rows = d.users || [];
+  const flash = LU_FLASH; LU_FLASH = '';
+  p.innerHTML = `
+  <div class="card"><h3>本地账号（兜底通道）</h3>
+    <div class="muted">本地账号只证明「你是谁」；能看哪些科室由 <b>授权台账</b> 决定 ——
+      两者独立维护，院方 SSO 接上后台账一行都不用改（docs/12 §3.6）。</div>
+    <div class="bar">
+      <span>档位 <b>${esc(st.mode || 'off')}</b></span>
+      <span>启用 <b>${st.active || 0}</b> / 共 ${st.total || 0}</span>
+      <span>待改密 <b>${st.must_change || 0}</b></span>
+      <span>锁定 <b>${st.locked || 0}</b></span>
+    </div>
+    ${(st.mode || 'off') === 'off'
+      ? '<div class="warn">当前 <code>ASK_AUTH_LOCAL=off</code>：本地登录未开启，下面的账号无法登录。</div>' : ''}
+    ${(st.self_enabled || []).length
+      ? `<div class="warn">创建人与启用人是同一个：${esc((st.self_enabled || []).join('、'))} ——
+           建议 A 建号、B 启用（单管理员环境可忽略）。</div>` : ''}
+    ${flash}
+  </div>
+
+  <div class="card"><h3>建号</h3>
+    <div class="row">
+      <input id="lu_uid" class="inline" placeholder="工号" style="max-width:130px">
+      <input id="lu_name" class="inline" placeholder="姓名" style="max-width:130px">
+      <input id="lu_days" class="inline" placeholder="有效期（天，默认 365）" style="max-width:180px">
+      <input id="lu_ref" class="inline" placeholder="依据（备案号 / 工单号，必填）" style="max-width:250px">
+      <button class="primary" onclick="luCreate()">建号</button>
+    </div>
+    <div class="muted">新建账号默认<b>停用</b>：建好就能用，等于没人复核过。建号后请单独点「启用」。</div>
+    <div id="lu_msg"></div>
+  </div>
+
+  <div class="card"><h3>账号清单</h3>
+    <table><tr><th>工号</th><th>姓名</th><th>状态</th><th>上次登录</th><th>到期</th><th>依据</th><th>操作</th></tr>
+    ${rows.map(u => `<tr>
+      <td>${esc(u.user_id)}${u.must_change ? ' <span class="badge b-warn">待改密</span>' : ''}</td>
+      <td>${esc(u.name)}</td>
+      <td>${LU_BADGE(u.status)}${u.failed_count ? ` <span class="muted">失败 ${u.failed_count}</span>` : ''}</td>
+      <td>${tsText(u.last_login_at)}</td>
+      <td>${u.expires_at ? tsText(u.expires_at) : '长期'}</td>
+      <td class="muted">${esc(u.reason || '-')}</td>
+      <td>
+        ${u.status === 'active'
+          ? `<button onclick="luStatus('${esc(u.user_id)}','disabled')">停用</button>`
+          : `<button onclick="luStatus('${esc(u.user_id)}','active')">启用</button>`}
+        <button onclick="luReset('${esc(u.user_id)}')">重置口令</button>
+        ${u.status === 'locked' ? `<button onclick="luUnlock('${esc(u.user_id)}')">解锁</button>` : ''}
+        <button onclick="luRenew('${esc(u.user_id)}')">续期</button>
+      </td></tr>`).join('')}
+    </table>
+    <div class="muted">停用会立刻踢掉该账号全部会话；重置会发一次性口令、撤销会话，并强制对方首登改密。</div>
+  </div>`;
+}
+
+async function luCreate(){
+  const val = id => (document.getElementById(id) || {}).value || '';
+  try{
+    const d = await jpostU('/api/security/local/users', {
+      user_id: val('lu_uid'), name: val('lu_name'), reason: val('lu_ref'),
+      valid_days: val('lu_days') ? Number(val('lu_days')) : 365});
+    LU_FLASH = `<div class="ok"><b>已建号 ${esc(d.user_id)}</b>（${esc(d.status)}）。
+      一次性初始口令：<code>${esc(d.initial_password)}</code>
+      —— <b>只显示这一次</b>，请当面或电话交给本人；对方首次登录会被强制改密。</div>`;
+  }catch(e){
+    LU_FLASH = `<div class="warn">${esc(String(e.message || e))}</div>`;
+  }
+  showLocalUsers();
+}
+
+async function luStatus(uid, status){
+  const why = status === 'active'
+    ? prompt(`启用 ${uid} 的依据（会写进审计）：`, '应急使用')
+    : prompt(`停用 ${uid} 的原因：`, '离职 / 转岗');
+  if (why === null) return;
+  try{
+    const d = await jpostU('/api/security/local/users/status',
+      {user_id: uid, status: status, reason: why});
+    LU_FLASH = `<div class="ok">${esc(uid)} → ${esc(d.status)}
+      ${d.revoked_sessions ? `（已踢下 ${d.revoked_sessions} 个会话）` : ''}</div>`;
+  }catch(e){
+    LU_FLASH = `<div class="warn">${esc(String(e.message || e))}</div>`;
+  }
+  showLocalUsers();
+}
+
+async function luReset(uid){
+  const why = prompt(`重置 ${uid} 的口令。依据（会写进审计）：`, '用户忘记口令') || '';
+  try{
+    const d = await jpostU('/api/security/local/users/password', {user_id: uid, reason: why});
+    LU_FLASH = `<div class="ok"><b>${esc(uid)} 的口令已重置</b>，该账号全部会话已失效。
+      一次性初始口令：<code>${esc(d.initial_password)}</code>
+      —— <b>只显示这一次</b>；对方首登必须改密（此后你也无从得知）。</div>`;
+  }catch(e){
+    LU_FLASH = `<div class="warn">${esc(String(e.message || e))}</div>`;
+  }
+  showLocalUsers();
+}
+
+async function luUnlock(uid){
+  try{
+    await jpostU('/api/security/local/users/unlock', {user_id: uid});
+    LU_FLASH = `<div class="ok">${esc(uid)} 已解锁，失败计数已清零。</div>`;
+  }catch(e){
+    LU_FLASH = `<div class="warn">${esc(String(e.message || e))}</div>`;
+  }
+  showLocalUsers();
+}
+
+async function luRenew(uid){
+  const days = prompt(`把 ${uid} 的有效期续多少天？`, '365');
+  if (days === null) return;
+  try{
+    const d = await jpostU('/api/security/local/users/renew',
+      {user_id: uid, valid_days: Number(days) || 365, reason: '管理员续期'});
+    LU_FLASH = `<div class="ok">${esc(uid)} 已续期至 ${tsText(d.expires_at)}。</div>`;
+  }catch(e){
+    LU_FLASH = `<div class="warn">${esc(String(e.message || e))}</div>`;
+  }
+  showLocalUsers();
+}
+
+// ── 测试数据一键清理（维护 / 交付前）──
+//   ★ 这里删的是"发生过什么"（审计 / 会话 / 反馈 / 事件），它们的价值恰恰在事后 ——
+//     所以确认方式不是勾选框，而是**手打一句确认短语**。
+let CLR_PHRASE = '我确认清理测试数据';
+let CLR_FLASH = '';
+
+function clrCountText(counts){
+  const parts = Object.entries(counts || {})
+    .filter(([k, v]) => v && k !== 'kept')
+    .map(([k, v]) => `${esc(k)} ${v}`);
+  return parts.length ? parts.join('、') : '<span class="muted">0</span>';
+}
+
+async function showCleanup(){
+  const p = document.getElementById('panel');
+  let d;
+  try{ d = await jget(uq('/api/admin/maintenance/inventory')); }
+  catch(e){
+    p.innerHTML = `<div class="card"><div class="warn">读取清理现状失败：${esc(String(e.message || e))}</div></div>`;
+    return;
+  }
+  CLR_PHRASE = d.confirm_phrase || CLR_PHRASE;
+  const flash = CLR_FLASH; CLR_FLASH = '';
+  const groups = d.groups || [];
+  p.innerHTML = `
+  <div class="card"><h3>测试数据一键清理</h3>
+    <div class="warn"><b>清理不可撤销。</b>这一步清掉的是审计、会话、反馈这类"事后才能用上"的数据，
+      因此只应在<b>测试 / 演示 / 交付前</b>使用；正式上线后请走归档，不要用本页。</div>
+    <div class="kv">
+      <b>元数据库</b><span><code>${esc(d.meta_db_path)}</code></span>
+      <b>审计库</b><span><code>${esc(d.audit_path)}</code>（哈希链 + 链锚会整体复位并封一个空锚）</span>
+      <b>现有账号</b><span>${esc(String(d.local_users ?? 0))} 个</span>
+    </div>
+    ${flash}
+  </div>
+
+  <div class="card"><h3>清理范围</h3>
+    <table><tr><th>选择</th><th>分组</th><th>内容</th><th>当前条数</th></tr>
+    ${groups.map(g => `<tr>
+      <td><input type="checkbox" data-clr="${esc(g.code)}"
+           ${g.code === 'accounts' ? '' : 'checked'}></td>
+      <td><b>${esc(g.name)}</b></td>
+      <td class="muted">${esc(g.desc)}</td>
+      <td>${clrCountText(g.counts)} <span class="muted">｜共 ${g.total || 0} 条</span></td>
+    </tr>`).join('')}
+    </table>
+    <div class="muted">账号组只删<b>其他</b>账号，你自己这个账号会保留 —— 否则一键就把自己锁在门外。
+      账号清空后，客户端首页会重新出现「创建管理员账号」入口。</div>
+  </div>
+
+  <div class="card"><h3>确认执行</h3>
+    <div class="row">
+      <input id="clr_confirm" class="inline" style="max-width:360px"
+             placeholder="请手打：${esc(CLR_PHRASE)}">
+      <button class="primary" onclick="runCleanup()">执行清理</button>
+      <button onclick="showCleanup()">刷新现状</button>
+    </div>
+    <div id="clr_msg"></div>
+  </div>`;
+}
+
+async function runCleanup(){
+  const box = document.getElementById('clr_msg');
+  const scopes = Array.from(document.querySelectorAll('[data-clr]'))
+    .filter(x => x.checked).map(x => x.dataset.clr);
+  const phrase = ((document.getElementById('clr_confirm') || {}).value || '').trim();
+  if (!scopes.length) {
+    if (box) box.innerHTML = '<div class="warn">请至少选择一个分组。</div>';
+    return;
+  }
+  if (phrase !== CLR_PHRASE) {
+    if (box) box.innerHTML = `<div class="warn">确认短语不一致：请手打「${esc(CLR_PHRASE)}」。
+      这一步防的不是攻击者，是手滑 —— 清理不可撤销。</div>`;
+    return;
+  }
+  try{
+    const d = await jpostU('/api/admin/maintenance/test-data/clear',
+      {scopes: scopes, confirm: CLR_PHRASE});
+    const detail = Object.entries(d.cleared || {}).map(([k, v]) =>
+      `${esc(k)}: ${Object.entries(v || {}).filter(([kk, vv]) => typeof vv === 'number')
+        .map(([kk, vv]) => `${kk}=${vv}`).join('、')}`).join('<br>');
+    CLR_FLASH = `<div class="ok"><b>已清理 ${d.total || 0} 条</b>（分组：${esc((d.scopes || []).join('、'))}）
+      ${detail ? '<div class="muted" style="margin-top:6px">' + detail + '</div>' : ''}
+      <div class="muted">清理动作已经写入身份事件留痕。</div></div>`;
+  }catch(e){
+    CLR_FLASH = `<div class="warn">清理失败：${esc(String(e.message || e))}</div>`;
+  }
+  showCleanup();
+}
+
+// ── 角色与审计（F6.2 / F6.5）──
+async function showPerm(){
+  const p = document.getElementById('panel');
+  const [roles, audit, exps, aStats] = await Promise.all([
+    jget(uq('/api/security/roles')),
+    jget(uq('/api/security/audit', {limit: 30})),
+    jget(uq('/api/reports/exports', {limit: 20})),
+    jget(uq('/api/security/audit/storage'))
+  ]);
+  const sess = SESS || {};
+  const mode = sess.auth_mode || '-';
+  const demoWarn = mode === 'demo'
+    ? `<div class="warn"><b>当前是演示模式</b>：身份可以由任何人切换，服务端鉴权只是"按声明判定"，
+       <b>不是安全边界</b>。上线必须切到 <code>ASK_AUTH_MODE=gateway</code>（网关注入可信头，
+       需配 <code>ASK_TRUSTED_PROXIES</code>）或 <code>ASK_AUTH_MODE=sso</code>（CAS/OIDC 票据）
+       （docs/12 §3.4 / §3.5）。</div>`
+    : (mode === 'gateway'
+       ? `<div class="ok">生产模式（gateway）：身份来自网关注入的可信头，且**来源必须在
+          <code>ASK_TRUSTED_PROXIES</code> 名单内** —— 名单之外来源注入的同名头会被入口剥离；
+          无头即 401（fail-closed）。</div>`
+       : `<div class="ok">生产模式（sso）：身份来自票据校验后签发的**服务端会话**，
+          登出即刻失效；授权每次按工号重新解析（转岗/离职即时生效）。</div>`);
+  p.innerHTML = `<div class="card"><h3>权限边界现状</h3>
+    ${demoWarn}
+    <div class="kv">
+      <b>已服务端强制</b><span>管理端全部接口、指标注册/下线、口径规则开关、数据源切换（含二次确认）、
+        审计与快照、导出与导出追溯 —— 都走 <code>app/core/authz.py</code> 统一判定</span>
+      <b>身份授信</b><span>demo / gateway（可信头 + 来源白名单 + 入口剥离伪造头）/ sso
+        （CAS / OIDC 票据 → 服务端会话 → Cookie 只放不透明令牌）；身份事件留痕见
+        <code>/api/security/events</code></span>
+      <b>授权台账</b><span>「谁能看哪些科室、到什么时候、依据是什么」在
+        <code>auth_grant</code> 台账（见左侧「授权台账」页）：变更 = 撤旧 + 写新 + 留痕，
+        依据必填；组织架构同步走映射表 + 增量刷新（12 §4.2 / §4.3 / §4.4）</span>
+      <b>仍待接线</b><span>与院方统一身份平台的**联调**（地址/属性名/证书，见 12 §3.5 对接清单）；
+        院方组织架构的**导出接口/文件格式**确认（12 §4.2）；审计独立存储（见下方链校验的诚实声明）</span>
+    </div>
+  </div>
+
+  <div class="card"><h3>角色定义（只读）</h3>
+    <div class="muted"><code>roles.yaml</code> 现在只定义<b>角色能做什么</b>（可见指标 / 能否导出 / 能否看 SQL）；
+      <b>谁能担任、覆盖哪些科室</b>在「授权台账」页按工号维护，并由组织架构同步刷新
+      （<code>restricted_metrics_roles</code> 仍在此只读展示）。</div>
+    <table><tr><th>角色</th><th>名称</th><th>数据范围</th><th>可见指标</th><th>导出</th><th>看 SQL</th><th>管理端</th></tr>
+    ${(roles||[]).map(r => `<tr>
+      <td>${esc(r.code)}</td><td>${esc(r.name || '')}</td>
+      <td>${esc((r.dept_scope||[]).map(x=>x==='*'?'全院':x).join('、') || '无')}</td>
+      <td class="muted">${r.visible_metrics === '*' || r.visible_metrics == null ? '全部（按敏感级）' : esc((r.visible_metrics||[]).length + ' 个')}</td>
+      <td>${r.can_export ? '是' : '否'}</td>
+      <td>${r.can_view_sql ? '是' : '否'}</td>
+      <td>${r.admin ? '<span class="badge b-ok">是</span>' : '<span class="badge b-off">否</span>'}</td>
+    </tr>`).join('')}
+    </table>
+    <div class="muted">「管理端」只代表能看别人在问什么、能改配置，<b>不放大任何数据范围</b>（12 §3.4）。</div>
+  </div>
+
+  <div class="card"><h3>审计存储（独立库 · HMAC 链 · 链锚）</h3>
+    <div class="bar">
+      <span>纳链：<b>${(aStats||{}).chained || 0}</b> 条</span>
+      <span>遗留（未纳链）：<b>${(aStats||{}).legacy || 0}</b> 条</span>
+      <span>链锚：<b>${(aStats||{}).anchors || 0}</b> 个</span>
+      <span>每 ${(aStats||{}).anchor_every || 0} 条自动封锚</span>
+    </div>
+    <div class="kv">
+      <b>审计库</b><span>${esc((aStats||{}).path || '-')}</span>
+      <b>链锚文件</b><span>${esc((aStats||{}).anchor_path || '-')}</span>
+      <b>密钥</b><span>${esc((aStats||{}).key_source || '-')}</span>
+    </div>
+    <div class="warn"><b>密钥在库外是刻意的</b>：这样"能改审计库的人"也算不出正确的链。
+      但它的代价必须知道 —— <b>密钥丢了，历史链就永久无法校验</b>。请把密钥与库一起纳入备份。</div>
+    <div class="row"><button class="primary" onclick="verifyChain()">校验链 + 链锚</button>
+      <button onclick="sealAnchor()">封一个链锚</button>
+      <span class="muted">只做哈希链**发现不了「删掉尾部记录」**（剩下的链仍然自洽），
+        链锚落在库外，是这件事的唯一证据。</span></div>
+    <div id="chain_msg"></div>
+    <table><tr><th>时间</th><th>用户</th><th>角色</th><th>问题</th><th>状态</th><th>耗时</th><th>链</th></tr>
+    ${(audit||[]).slice(0, 30).map(x => `<tr>
+      <td>${new Date(x.ts*1000).toLocaleString()}</td><td>${esc(x.user_id)}</td>
+      <td>${esc(x.role)}</td><td>${esc(x.question)}</td><td>${esc(x.status)}</td>
+      <td>${x.latency_ms}ms</td>
+      <td class="muted">${x.hash ? esc(String(x.hash).slice(0, 8)) : '<span class="badge b-off">改造前</span>'}</td>
+    </tr>`).join('')}
+    </table>
+    ${(audit||[]).some(x => !x.hash) ? '<div class="muted">标「改造前」的记录在哈希链启用之前写入，未纳入链 —— 如实标出，不假装它也被保护了。</div>' : ''}
+  </div>
+
+  <div class="card"><h3>导出追溯</h3>
+    <div class="muted">谁在什么时候导出了什么（含水印全文）。导出内容一律由服务端按 <code>answer_id</code> 从快照取，
+      不接受前端提交数据。每份文件的水印里带**导出流水号 + 校验位**，可在下面反查真伪。</div>
+    <div class="row">
+      <input id="ex_serial" placeholder="EX-YYYYMMDD-SSSS-CC" style="max-width:240px">
+      <button onclick="verifyExport()">反查这个流水号</button>
+    </div>
+    <div id="ex_msg"></div>
+    <table><tr><th>时间</th><th>流水号</th><th>操作人</th><th>快照</th><th>格式</th><th>水印</th></tr>
+    ${(exps||[]).map(x => `<tr><td>${new Date(x.ts*1000).toLocaleString()}</td>
+      <td>${x.serial ? esc(x.serial) : '<span class="badge b-off">改造前</span>'}</td>
+      <td>${esc(x.user_id)}</td><td class="muted">${esc(x.answer_id || '-')}</td><td>${esc(x.fmt)}</td>
+      <td class="muted">${esc((x.watermark || '').slice(0, 70))}</td></tr>`).join('')}
+    </table></div>`;
+}
+async function verifyExport(){
+  const msg = document.getElementById('ex_msg');
+  const s = (document.getElementById('ex_serial').value || '').trim();
+  if (!s) { msg.innerHTML = '<div class="warn">先填一个流水号</div>'; return; }
+  try {
+    const d = await jget(uq('/api/reports/exports/verify', {serial: s}));
+    const rec = (d.records || [])[0];
+    msg.innerHTML = d.found
+      ? `<div class="ok">确实由本院系统导出：${esc(d.conclusion)}
+          <div class="muted">操作人 ${esc(rec.user_id)}｜快照 ${esc(rec.answer_id || '-')}｜
+          时间 ${new Date(rec.ts*1000).toLocaleString()}</div></div>`
+      : `<div class="warn">${esc(d.conclusion)}${d.reason ? '：' + esc(d.reason) : ''}
+          <div class="muted">编号格式对但日志里没有 = 伪造；编号本身不合法 = 抄错或改过一位。</div></div>`;
+  } catch (e) {
+    msg.innerHTML = `<div class="warn">反查失败：${esc(String(e.message || e))}</div>`;
+  }
+}
+async function verifyChain(){
+  const msg = document.getElementById('chain_msg');
+  msg.innerHTML = '<div class="muted">校验中…</div>';
+  try {
+    const d = await jget(uq('/api/security/audit/verify'));
+    const legacy = d.legacy_rows ? `，未纳入新链的历史记录 ${d.legacy_rows} 条` : '';
+    const lg = d.legacy_chain || {};
+    const legacyLine = lg.checked
+      ? `<div class="muted">遗留段（旧算法）自校验 ${lg.checked} 条：` +
+        (lg.ok ? '通过' : '**对不上** —— ' + esc(lg.note || '')) + '</div>'
+      : '';
+    const hint = d.key_hint ? `<div class="muted">${esc(d.key_hint)}</div>` : '';
+    msg.innerHTML = d.ok
+      ? `<div class="ok"><b>链完整，且与链锚一致。</b>已校验 ${d.checked} 条${legacy}；
+          链锚 ${d.anchors} 个；尾部哈希 <code>${esc(String(d.tail_hash||'').slice(0, 12))}…</code>
+          <div class="muted">密钥指纹 ${esc(d.key_id || '-')}｜${esc(d.key_source || '')}</div>
+          ${legacyLine}${esc(d.note || '') ? '<div class="muted">' + esc(d.note) + '</div>' : ''}</div>`
+      : `<div class="warn"><b>校验未通过</b>${d.broken_at ? `：第 ${d.broken_at} 条对不上` : ''}
+          —— ${esc(d.reason || '')}
+          <div class="muted">已校验 ${d.checked} 条；链锚 ${d.anchors || 0} 个，
+          锚状态${d.anchor_ok ? '正常' : '**异常**'}。${esc(d.key_hint || '')}</div>
+          ${(d.anchor_mismatch || []).map(a => `<div class="muted">· ${esc(a.why || '')}</div>`).join('')}
+        </div>`;
+  } catch (e) {
+    msg.innerHTML = `<div class="warn">校验失败：${esc(String(e.message || e))}</div>`;
+  }
+}
+async function sealAnchor(){
+  const msg = document.getElementById('chain_msg');
+  try {
+    const d = await jpostU('/api/security/audit/seal', {});
+    msg.innerHTML = `<div class="ok">已封锚：第 ${d.anchor.seq} 条 / 共 ${d.anchor.count} 条，
+      指纹 ${esc(d.anchor.key_id)}。建议把这行记进运维日志 —— 锚越密，
+      「某段记录被整体替换」越难成立。</div>`;
+  } catch (e) {
+    msg.innerHTML = `<div class="warn">封锚失败：${esc(String(e.message || e))}</div>`;
+  }
+}
+
+// ── 本体定义 ──
+async function showOnto(){
+  const p = document.getElementById('panel');
+  const [reg, met] = await Promise.all([
+    jget(uq('/api/admin/registry')),
+    jget(uq('/api/semantic/metrics'))
+  ]);
+  p.innerHTML = `<div class="card"><h3>本体定义（语义层）</h3>
+    <div class="bar">
+      <span>指标 ${reg.metrics||0}</span><span>度量 ${reg.measures||0}</span>
+      <span>维度 ${reg.dimensions||0}</span><span>版本 ${esc(reg.version||'-')}</span>
+    </div>
+    <div class="muted">文件：${esc(reg.path||'')}｜域：${(reg.domains||[]).map(esc).join('、')}</div>
+    <table><tr><th>编码</th><th>名称</th><th>域</th><th>口径默认</th><th>责任人</th></tr>
+    ${(met.metrics||[]).map(m=>`<tr>
+      <td>${esc(m.code)}</td><td>${esc(m.name)}</td><td>${esc(m.domain)}</td>
+      <td class="muted">${esc(m.default_date_basis||'-')} / ${esc(m.default_dept_basis||'-')}</td>
+      <td>${m.owner?esc(m.owner):'<span class="muted">未指定</span>'}</td></tr>`).join('')}
+    </table>
+    <div class="row"><button onclick="show('metric')">去指标目录与编辑</button>
+      <button onclick="show('versions')">版本留痕</button>
+      <button onclick="show('pmap')">物理映射</button></div>
+    <div class="muted" style="margin-top:8px">编辑入口已接（F5.1/F5.2/F5.6/F5.3）；<code>measure</code> 绑定与
+      可用维度仍只能改 YAML —— 界面上改一个"名称"不会破坏这些绑定。</div>
+  </div>`;
+}
+
+// ── 物理映射（F5.3）──
+let PM = {confirm:'', sha:''};
+async function showPhysicalMap(){
+  const p = document.getElementById('panel');
+  const d = await jget(uq('/api/admin/physical-map'));
+  PM = {confirm: d.confirm_phrase || '', sha: d.sha || ''};
+  const g = d.diagnose || {};
+  const unmapped = g.unmapped || [];
+  p.innerHTML = `<div class="card"><h3>物理映射（逻辑 → 本院物理）</h3>
+    <div class="bar">
+      <span>覆盖度 ${g.coverage!=null?(g.coverage*100).toFixed(0)+'%':'-'}</span>
+      <span>已映射 ${g.mapped_count||0}/${g.total||0} 个指标</span>
+      <span>未映射 ${unmapped.length}</span>
+      <span>指纹 ${esc(PM.sha||'-')}</span>
+    </div>
+    <div class="muted">文件：${esc(d.path||'')}｜保存前自动备份，可一键回滚｜
+      诊断只判断配置，不验证库里是否真有该表该列。</div>
+    <div class="warn" style="margin-top:8px">改这份文件会让<b>所有指标</b>的数字随之变化，
+      而界面不会提示。保存需二次确认。</div>
+    ${unmapped.length?`<table style="margin-top:8px"><tr><th>接不上的指标</th><th>表</th><th>原因</th></tr>
+      ${unmapped.slice(0,15).map(u=>`<tr><td>${esc(u.metric)}<div class="muted">${esc(u.name||'')}</div></td>
+        <td>${esc(u.table||'-')}</td><td class="muted">${esc(u.why||'')}</td></tr>`).join('')}
+    </table>${unmapped.length>15?'<div class="muted">仅显示前 15 条</div>':''}`
+      : '<div class="ok">当前映射已覆盖全部指标</div>'}
+    ${(g.null_columns||[]).length?`<div class="muted" style="margin-top:8px">显式不可用列：
+      ${g.null_columns.map(c=>`<div><b>${esc(c.column)}</b>：${esc((c.impact||[]).join('；')||'无直接依赖')}</div>`).join('')}
+    </div>`:''}
+    <textarea id="pm_text" spellcheck="false" style="width:100%;height:380px;margin-top:10px;
+      font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.5">${esc(d.text||'')}</textarea>
+    <div class="row" style="margin-top:8px">
+      <button onclick="pmValidate()">预检</button>
+      <button onclick="pmSave()">保存并热加载</button>
+      <button onclick="showPhysicalMap()">放弃修改</button>
+    </div>
+    <div id="pm_msg"></div>
+  </div>
+  <div class="card"><h3>历史版本（可回滚）</h3>
+    <table><tr><th>备份</th><th>大小</th><th>时间</th><th>操作</th></tr>
+    ${(d.backups||[]).map(b=>`<tr><td>${esc(b.name)}</td><td>${(b.size/1024).toFixed(1)} KB</td>
+      <td>${tsText(b.mtime)}</td><td><button onclick="pmRestore('${esc(b.name)}')">回滚</button></td></tr>`).join('')
+      || '<tr><td colspan="4" class="muted">暂无备份</td></tr>'}
+    </table></div>`;
+}
+function pmMsg(html){ document.getElementById('pm_msg').innerHTML = html; }
+async function pmValidate(){
+  const text = document.getElementById('pm_text').value;
+  const d = await jsend(uq('/api/admin/physical-map/validate'),'POST',withAdmin({text}));
+  if(d.errors && d.errors.length){
+    pmMsg(`<div class="warn">预检未通过（${d.errors.length} 项）：<ul>${d.errors.map(e=>`<li>${esc(e)}</li>`).join('')}</ul></div>`);
+    return;
+  }
+  const g = d.diagnose || {};
+  pmMsg(`<div class="ok">预检通过。保存后覆盖度 ${((g.coverage||0)*100).toFixed(0)}%，
+    未映射 ${(g.unmapped||[]).length} 个指标。</div>`);
+}
+async function pmSave(){
+  if(!confirm('确认保存？\n\n这会改变所有指标的口径，保存后立即生效。')) return;
+  const text = document.getElementById('pm_text').value;
+  const d = await jsend(uq('/api/admin/physical-map'),'PUT',
+    withAdmin({text, confirm:PM.confirm, note:'管理端编辑'}));
+  if(d.detail){
+    pmMsg(`<div class="warn">保存失败：${esc(typeof d.detail==='string'?d.detail:JSON.stringify(d.detail))}</div>`);
+    return;
+  }
+  const r = d.reload || {};
+  pmMsg(r.ok? `<div class="ok">已保存并热加载生效（版本 ${esc(r.version||'-')}）。</div>`
+             : `<div class="warn">已写入，但热加载失败：${esc(r.error||'')}。建议回滚。</div>`);
+  if(r.ok) setTimeout(showPhysicalMap, 700);
+}
+async function pmRestore(name){
+  if(!confirm('回滚到 '+name+' ？')) return;
+  const d = await jsend(uq('/api/admin/physical-map/restore'),'POST',withAdmin({name}));
+  if(d.detail){ alert('回滚失败：'+JSON.stringify(d.detail)); return; }
+  showPhysicalMap();
+}
+
+// ── 口径规则 ──
+async function showCaliber(){
+  const p = document.getElementById('panel');
+  const c = await jget(uq('/api/admin/caliber'));
+  p.innerHTML = `<div class="card"><h3>口径规则</h3>
+    <div class="muted">「哪些算、哪些不算」由院方决定，系统只按配置执行。改动即时生效，并同步影响对账。</div>
+    <div class="bar"><span>数据源 ${esc(c.data_source)}</span><span>${esc(c.profile_path||'')}</span></div>
+    <table><tr><th>规则</th><th>作用于</th><th>状态</th><th>操作</th></tr>
+    ${(c.rules||[]).map(r=>`<tr>
+      <td>${esc(r.name)}<div class="muted">${esc(r.code)}${r.his_only?' · 仅直连 HIS 可用':''}</div>
+          <div class="muted">${esc(r.where||'')}</div></td>
+      <td>${(r.applies_to||[]).map(esc).join('、')}</td>
+      <td>${r.enabled?'<span class="badge b-ok">已启用</span>':'<span class="badge b-off">关闭</span>'}</td>
+      <td><button onclick="toggleRule('${r.code}',${!r.enabled})">${r.enabled?'关闭':'启用'}</button></td>
+    </tr>`).join('')}</table>
+    ${(c.rules||[]).map(r=>`<div class="muted" style="margin-top:6px"><b>${esc(r.code)}</b>：${esc(r.note)}</div>`).join('')}
+  </div>
+  <div class="card"><h3>科室分组</h3>
+    <table><tr><th>分组</th><th>来源</th><th>组数</th><th>科室数</th></tr>
+    ${(c.dept_groups||[]).map(g=>`<tr><td>${esc(g.name)}<div class="muted">${esc(g.code)}</div></td>
+      <td>${esc(g.source||'-')}</td><td>${g.group_count}</td><td>${g.dept_count}</td></tr>`).join('')}
+    </table>
+    <div class="muted" style="margin-top:6px">分组即查询维度：问「各统计科室出院人次」按分组汇总；改配置里的 groups 即可自定义。</div>
+  </div>`;
+}
+async function toggleRule(code, enabled){
+  // 改口径 = 改所有问数的数值：服务端限管理员，且改动会热重载
+  const d = await jsend(uq('/api/admin/caliber/rule'),'POST',withAdmin({code:code, enabled:enabled}));
+  if(!d.ok){ alert('失败：'+(d.detail||d.error||'未知')); return; }
+  showCaliber();
+}
+
+// ── 运维 ──
+async function showOps(){
+  const p = document.getElementById('panel');
+  const [h, s, a, st, sh] = await Promise.all([
+    jget(uq('/api/admin/health')), jget(uq('/api/admin/sources')),
+    jget(uq('/api/security/audit', {limit: 20})), jget(uq('/api/ops/stats')),
+    jget(uq('/api/security/source/health'))
+  ]);
+  p.innerHTML = `<div class="card"><h3>平台状态</h3>
+    <div class="kv">
+      <b>语义层</b><span>${h.semantic && h.semantic.ok ? ('正常 · '+h.semantic.metrics+' 个指标 · '+esc(h.semantic.version)) : '异常'}</span>
+      <b>数据源</b><span>${h.source && h.source.ok ? esc(h.source.version||'ok')+' · '+esc(h.source.user||'') : esc((h.source||{}).error||'-')}</span>
+      <b>模型</b><span>${(h.model||{}).configured ? esc((h.model||{}).model||'已配置') : '未配置（规则降级）'}</span>
+      <b>元数据库</b><span>${esc((h.meta_db||{}).path||'-')}</span>
+    </div>
+    <div class="bar" style="margin-top:10px">
+      <span>提问 ${st.total_questions||0}</span><span>可答率 ${st.answer_rate??'-'}</span>
+      <span>反问率 ${st.clarify_rate??'-'}</span><span>拦截率 ${st.deny_rate??'-'}</span>
+      <span>P95 ${st.p95_latency_ms||0}ms</span>
+    </div>
+  </div>
+  <div class="card"><h3>只读守门体检</h3>
+    <div class="muted">它证明的是「我们对源库零写」—— 这是等保与院方评审的必答题，不是可选项。
+      做法不是"声明只读"，而是真的发一条 <code>DELETE</code> 看它被不被拦住。</div>
+    <div class="bar">
+      <span>状态：${sh.ok ? '<span class="badge b-ok">连接正常</span>' : '<span class="badge b-bad">不可用</span>'}</span>
+      <span>${esc(sh.readonly_guard || sh.error || '未检查')}</span>
+    </div>
+    <div class="kv">
+      ${Object.entries(sh).filter(([k]) => k !== 'ok' && k !== 'readonly_guard')
+        .map(([k, v]) => `<b>${esc(k)}</b><span>${esc(typeof v === 'object' ? JSON.stringify(v) : v)}</span>`).join('')}
+    </div>
+    ${sh.ok ? '' : `<div class="warn">该体检只针对 <b>HIS 连接</b>；当前数据源若走 ADS（本地宽表），
+      HIS 探不通是正常的，但上线前必须在院内把这一项跑通。</div>`}
+  </div>
+  <div class="card"><h3>源域时效</h3>
+    <button onclick="probe()">重新探测</button>
+    <table><tr><th>域</th><th>表</th><th>最新数据</th><th>新鲜度</th><th>滞后天数</th></tr>
+    ${(s||[]).map(x=>`<tr><td>${esc(x.domain)}</td><td>${esc(x.source_table)}</td>
+      <td>${esc(x.last_data_date)}</td><td>${esc(x.freshness)}</td><td>${esc(x.days_behind)}</td></tr>`).join('')}
+    </table></div>
+  <div class="card"><h3>审计（最近 20 条）</h3>
+    <table><tr><th>时间</th><th>用户</th><th>角色</th><th>问题</th><th>状态</th><th>耗时</th></tr>
+    ${(a||[]).map(x=>`<tr><td>${new Date(x.ts*1000).toLocaleString()}</td><td>${esc(x.user_id)}</td>
+      <td>${esc(x.role)}</td><td>${esc(x.question)}</td><td>${esc(x.status)}</td><td>${x.latency_ms}ms</td></tr>`).join('')}
+    </table></div>`;
+}
+async function probe(){
+  const d = await jsend(uq('/api/admin/sources/probe'),'POST',withAdmin({}));
+  alert(d.ok ? '探测完成，停更域：'+((d.stale||[]).join('、')||'无') : ('探测失败：'+d.error));
+  showOps();
+}
+
+function show(p){
+  if(p==='metric') return showMetrics();
+  if(p==='versions') return showVersions();
+  if(p==='reconcile') return showReconcile();
+  if(p==='grants') return showGrants();
+  if(p==='localusers') return showLocalUsers();
+  if(p==='perm') return showPerm();
+  if(p==='llm') return showLlm();
+  if(p==='ds') return showDs();
+  if(p==='onto') return showOnto();
+  if(p==='pmap') return showPhysicalMap();
+  if(p==='caliber') return showCaliber();
+  if(p==='ops') return showOps();
+  if(p==='cleanup') return showCleanup();
+}
+
+// ── 启动：先认身份，再决定渲染什么（12 §3.4 / docs/13 UI-10）──
+function renderAdminIdentity(){
+  const node = document.getElementById('admin_identity');
+  if (!node) return;
+  const u = (SESS || {}).user || {};
+  if ((SESS || {}).auth_mode !== 'demo') {
+    // 只显示"当前是谁、能不能管"，不写实现说明（那是文档的事）
+    if (!u.user_id) { node.innerHTML = ''; return; }
+    const role = (!u.role || u.role === 'guest') ? '未授权' : u.role;
+    node.innerHTML = `<span class="muted">${esc(u.name || u.user_id)} · ${esc(role)}</span>
+      <span class="badge ${u.is_admin ? 'b-ok' : 'b-bad'}">${u.is_admin ? '可管理' : '无管理权限'}</span>`;
+    return;
+  }
+  const accounts = ((SESS || {}).demo_accounts || []).slice();
+  // 下拉必须能显示**当前生效**身份（默认是 guest，不在演示账号清单里）
+  if (u.user_id && !accounts.some(a => a.user_id === u.user_id)) {
+    accounts.unshift({user_id: u.user_id, name: u.name || '', role: u.role,
+                      role_name: '未授权身份',
+                      _label: '未授权身份（仅最小权限，不能进管理端）'});
+  }
+  node.innerHTML = `<label class="inline" style="display:inline">演示身份
+    <select id="admin_uid" class="inline" style="width:auto" onchange="switchAdminUid()">
+      ${accounts.map(a => `<option value="${esc(a.user_id)}" ${a.user_id === (u.user_id || '') ? 'selected' : ''}>
+        ${esc(a._label || (a.user_id + ' ' + (a.name || '') + '（' + (a.role_name || a.role) + '）'))}</option>`).join('')}
+    </select></label>
+    <span class="badge ${u.is_admin ? 'b-ok' : 'b-bad'}">${u.is_admin ? '可管理' : '无管理权限'}</span>`;
+}
+// ── 登录 / 改密弹层（F6.1 · docs/12 §3.6）──
+// 管理端也能登录：两边用的是**同一个**服务端会话（同一 Cookie 域），
+// 在哪登录效果一样，不存在"两套凭证"。登录后可改口径的会话本就是同一个。
+async function jpostRaw(path, body){
+  const r = await fetch(path, {method:'POST', headers:{'Content-Type':'application/json'},
+                               body: JSON.stringify(body || {})});
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.detail || ('HTTP ' + r.status));
+  return d;
+}
+
+// ── 口令框的"小眼睛"（与客户端同一套）──
+// 只切 `input.type`：值不动、不复制、不记进任何地方。
+const EYE_SVG = `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
+  stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <path d="M1.8 12S5.8 5.8 12 5.8 22.2 12 22.2 12 18.2 18.2 12 18.2 1.8 12 1.8 12z"/>
+  <circle cx="12" cy="12" r="3.1"/></svg>`;
+
+function pwdInput(id, opts){
+  const o = opts || {};
+  // aria-label 显式给输入框：小眼睛在 <label> 里，不声明的话读屏会把控件名念成
+  // 「口令 显示口令」（按钮的 aria-label 被并进 label 文本）。
+  const al = o.al ? ` aria-label="${esc(o.al)}"` : '';
+  return `<span class="pwdwrap"><input id="${id}" class="field" type="password"${al}
+      autocomplete="${esc(o.ac || 'current-password')}" placeholder="${esc(o.ph || '')}"
+      ><button type="button" class="eye" title="显示口令" aria-label="显示口令"
+      onclick="togglePwd('${id}', this)">${EYE_SVG}</button></span>`;
+}
+
+function togglePwd(id, btn){
+  const i = document.getElementById(id);
+  if (!i) return;
+  const show = i.type === 'password';
+  i.type = show ? 'text' : 'password';
+  if (btn){
+    if (btn.classList) btn.classList.toggle('on', show);
+    btn.title = show ? '隐藏口令' : '显示口令';
+    if (btn.setAttribute) btn.setAttribute('aria-label', btn.title);
+  }
+}
+
+function showLoginModal(){
+  const m = document.getElementById('login_modal');
+  if (!m) return;
+  const ll = (SESS || {}).local_login || {};
+  const bs = (SESS || {}).bootstrap || {};
+  // 系统内还没有账号：直接给「创建管理员」，登录框在这里没有任何用处
+  if (bs.needs_bootstrap) {
+    m.innerHTML = `
+    <div class="box">
+      <div class="brandrow">
+        <div class="logo">问</div>
+        <div>
+          <h2>创建管理员账号</h2>
+          <div class="sub">系统内还没有任何账号</div>
+        </div>
+      </div>
+      <label class="field">工号
+        <input id="bs_uid" class="field" autocomplete="username" placeholder="工号 / 账号">
+      </label>
+      <label class="field">姓名
+        <input id="bs_name" class="field" placeholder="真实姓名">
+      </label>
+      <label class="field">口令
+        ${pwdInput('bs_pwd', {al: '口令', ac: 'new-password',
+          ph: `至少 ${bs.pwd_min_len || ll.pwd_min_len || 8} 位，不能包含工号`})}
+      </label>
+      <label class="field">再输一次
+        ${pwdInput('bs_pwd2', {al: '再输一次', ac: 'new-password'})}
+      </label>
+      <div class="actions"><button class="btn-main" onclick="doAdminBootstrap()">创建并登录</button></div>
+      <div class="msg" id="bs_msg"></div>
+      <div class="foot">
+        该账号会直接获得 <b>${esc(bs.admin_role || '信息科')}</b> 角色（<code>roles.yaml</code> 里
+        带 <code>admin: true</code> 的角色）与全院数据范围，并写入授权台账；建成后此入口自动关闭。
+      </div>
+    </div>`;
+    m.style.display = 'flex';
+    const f = document.getElementById('bs_uid');
+    if (f && f.focus) { try { f.focus(); } catch (e) {} }
+    return;
+  }
+  m.innerHTML = `
+    <div class="box">
+      <div class="brandrow">
+        <div class="logo">问</div>
+        <div>
+          <h2>登录管理端</h2>
+          <div class="sub">与问数客户端共用同一个会话</div>
+        </div>
+      </div>
+      ${ll.enabled ? `
+        <label class="field">工号
+          <input id="al_uid" class="field" autocomplete="username" placeholder="工号 / 账号">
+        </label>
+        <label class="field">口令
+          ${pwdInput('al_pwd', {al: '口令', ph: `至少 ${ll.pwd_min_len || 8} 位`})}
+        </label>
+        <div class="actions"><button class="btn-main" onclick="doAdminLogin()">登录</button></div>
+        <div class="msg" id="al_msg"></div>
+        <div class="foot">
+          能进管理端由<b>授权台账</b>里的角色决定（需要 <code>admin: true</code>，即信息科）；
+          普通账号可以登录，但只会看到「无管理端权限」。
+        </div>` : `
+        <div class="danger">当前未开启本地登录（<code>ASK_AUTH_LOCAL=off</code>），
+          院内统一认证也尚未接通 —— 请联系信息科配置登录方式。</div>`}
+    </div>`;
+  m.style.display = 'flex';
+  const f = document.getElementById('al_uid');
+  if (f && f.focus) { try { f.focus(); } catch (e) {} }
+}
+
+async function doAdminBootstrap(){
+  const val = id => ((document.getElementById(id) || {}).value || '');
+  const msg = document.getElementById('bs_msg');
+  if (msg) msg.textContent = '';
+  const uid = val('bs_uid').trim();
+  const name = val('bs_name').trim();
+  const p1 = val('bs_pwd'), p2 = val('bs_pwd2');
+  if (!uid || !name) { if (msg) msg.textContent = '工号与姓名都要填'; return; }
+  if (p1 !== p2) { if (msg) msg.textContent = '两次输入的口令不一致'; return; }
+  try{
+    await jpostRaw('/api/security/bootstrap/admin',
+                   {user_id: uid, name: name, password: p1, password2: p2});
+    location.reload();
+  }catch(e){ if (msg) msg.textContent = String(e.message || e); }
+}
+
+async function doAdminLogin(){
+  const uid = ((document.getElementById('al_uid') || {}).value || '').trim();
+  const pwd = (document.getElementById('al_pwd') || {}).value || '';
+  const msg = document.getElementById('al_msg');
+  if (msg) msg.textContent = '';
+  if (!uid || !pwd) { if (msg) msg.textContent = '工号与口令都要填'; return; }
+  try{
+    const d = await jpostRaw('/api/security/auth/local/login', {user_id: uid, password: pwd});
+    if (d.must_change) {
+      // 重新拉一次会话：改密期间顶部要能显示"是谁、待改口令"，不能是空白
+      try { SESS = await jget('/api/security/session'); } catch (e) {}
+      showPwdChange();
+      return;
+    }
+    location.reload();
+  }catch(e){ if (msg) msg.textContent = String(e.message || e); }
+}
+
+function showPwdChange(){
+  const m = document.getElementById('login_modal');
+  if (!m) return;
+  const ll = (SESS || {}).local_login || {};
+  const idn = document.getElementById('admin_identity');
+  if (idn) {
+    const u = (SESS || {}).user || {};
+    const role = (!u.role || u.role === 'guest') ? '未授权' : u.role;
+    idn.innerHTML = `<span class="badge b-warn">待改口令</span>
+      <span class="muted">${esc(u.name || u.user_id || '')} · ${esc(role)}</span>
+      <a href="#" onclick="doAdminLogout();return false;" style="font-size:13px">退出</a>`;
+  }
+  m.innerHTML = `
+    <div class="box">
+      <div class="brandrow">
+        <div class="logo">问</div>
+        <div>
+          <h2>设置新口令</h2>
+          <div class="sub">首次登录必须换掉初始口令</div>
+        </div>
+      </div>
+      <label class="field">初始口令
+        ${pwdInput('ap_old', {al: '初始口令'})}
+      </label>
+      <label class="field">新口令
+        ${pwdInput('ap_new', {al: '新口令', ac: 'new-password', ph: `至少 ${ll.pwd_min_len || 8} 位`})}
+      </label>
+      <label class="field">再输一次
+        ${pwdInput('ap_new2', {al: '再输一次', ac: 'new-password'})}
+      </label>
+      <div class="actions"><button class="btn-main" onclick="doAdminPwdChange()">设置新口令</button></div>
+      <div class="msg" id="ap_msg"></div>
+      <div class="foot">
+        不能与工号相同，不能复用最近 3 次用过的口令。<br>
+        改完之后管理员也无从得知你的口令。
+      </div>
+      <div class="foot"><a href="#" onclick="doAdminLogout();return false;">退出登录</a></div>
+    </div>`;
+  m.style.display = 'flex';
+}
+
+async function doAdminPwdChange(){
+  const oldp = (document.getElementById('ap_old') || {}).value || '';
+  const n1 = (document.getElementById('ap_new') || {}).value || '';
+  const n2 = (document.getElementById('ap_new2') || {}).value || '';
+  const msg = document.getElementById('ap_msg');
+  if (msg) msg.textContent = '';
+  if (n1 !== n2) { if (msg) msg.textContent = '两次输入的新口令不一致'; return; }
+  try{
+    await jpostRaw('/api/security/auth/local/password/change',
+                   {old_password: oldp, new_password: n1});
+    location.reload();
+  }catch(e){ if (msg) msg.textContent = String(e.message || e); }
+}
+
+async function doAdminLogout(){
+  try { await jpostRaw('/api/security/logout', {}); } catch (e) {}
+  location.reload();
+}
+
+function gatePanel(){
+  const u = (SESS || {}).user || {};
+  if (u.is_admin) return false;
+  // ★「未登录」与「登录了但没权限」是两件事：混成一张卡片，会让人以为"账号没权限"，
+  //   实际只是还没登录 —— 这两种失败该做的事完全不同（去登录 vs 找管理员要授权）。
+  if ((SESS || {}).need_login || ((SESS || {}).bootstrap || {}).needs_bootstrap) {
+    const boot = ((SESS || {}).bootstrap || {}).needs_bootstrap;
+    showLoginModal();
+    document.getElementById('panel').innerHTML = `<div class="card">
+      <h3>${boot ? '系统还没有账号' : '需要先登录'}</h3>
+      <div class="warn">${boot
+        ? '账号表是空的：先创建第一个管理员账号（表单已弹出），建成后本页自动刷新。'
+        : `当前没有有效会话（<code>${esc((SESS || {}).auth_mode || '')}</code> 模式）。
+           请在登录框中输入工号与口令；登录后本页会自动刷新。`}</div>
+      <div class="muted" style="margin-top:8px">
+        登录只证明「你是谁」；能不能进管理端由<b>授权台账</b>里的角色决定
+        （需要 <code>admin: true</code>，即信息科）。
+      </div></div>`;
+    return true;
+  }
+  document.getElementById('panel').innerHTML = `<div class="card">
+    <h3>无管理端权限</h3>
+    <div class="warn"><b>${esc(u.name || '当前身份')}（${esc(!u.role || u.role === 'guest' ? '未授权' : u.role)}）不能进入管理端。</b>
+      管理端能改数据源、口径规则与指标定义，属于运维/信息科职责（12 §3.4）。</div>
+    <div class="kv" style="margin-top:10px">
+      <b>需要什么</b><span>角色里带 <code>admin: true</code>（演示环境可用「演示身份」切换到 <code>u005</code> 信息科）</span>
+      <b>这一步能挡住谁</b><span>挡住误入与手滑。<b>真正的边界在网关</b>：本页是静态文件，
+        前端门禁不是安全边界 —— 生产必须由 <code>/admin</code> 前置代理校验身份（12 §3.4）</span>
+    </div>
+    <div class="row"><a href="/">→ 去问数客户端</a></div></div>`;
+  return true;
+}
+async function switchAdminUid(){
+  ADMIN_UID = document.getElementById('admin_uid').value;
+  SESS = {auth_mode: 'demo', user: await jget('/api/security/me?user_id=' + encodeURIComponent(ADMIN_UID)),
+          demo_accounts: (SESS || {}).demo_accounts || []};
+  renderAdminIdentity();
+  if (gatePanel()) return;
+  const on = document.querySelector('#nav button.on');
+  show(on ? on.dataset.p : 'metric');
+}
+async function bootAdmin(){
+  try {
+    SESS = await jget('/api/security/session');
+  } catch (e) {
+    document.getElementById('panel').innerHTML =
+      `<div class="card"><div class="warn">会话获取失败：${esc(String(e.message || e))}</div></div>`;
+    return;
+  }
+  if (SESS.auth_mode === 'demo' && ((SESS.user || {}).user_id)) {
+    ADMIN_UID = SESS.user.user_id;   // 默认 guest = 最小权限；要管理就显式切换
+  }
+  renderAdminIdentity();
+  if (gatePanel()) return;
+  show('metric');
+}
+bootAdmin();
+</script>
+</body>
+</html>

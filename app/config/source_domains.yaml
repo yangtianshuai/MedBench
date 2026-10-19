@@ -1,0 +1,72 @@
+# 数据源域配置（F8.1 / F8.2）
+#
+# 每个域声明三件事：属于哪个源（source）、用哪张表（table）、
+# 用哪个日期列（date_col）判断数据时效。
+# 探测只执行 SELECT MAX(日期列)，只读、成本极低。
+#
+# ★ source 字段（v0.11）：缺省为 his（向后兼容），取值必须已登记在 sources.yaml。
+#   域 → 源的映射完整性由自测把关：python -m app.core.sources --selftest
+#   域名必须跨源唯一（source_state 以 domain 为主键）。
+#
+# ⚠️ 实测基线（2026-10-16 探测）：
+#   住院   PAT_VISIT        → 更新至 T-1，可用
+#   费用   INP_BILL_DETAIL  → 更新至 T-1，可用
+#   门诊   OUTP_BILL_ITEMS  → 可用，但就诊主表 CLINIC_MASTER 仅 348 行
+#   DRG    DRG_DETAIL       → 止于 2019-06，预期判定 stale
+#   报表层 RPT_DEPT_DAY     → 止于 2024-10，预期判定 stale
+
+domains:
+  - domain: 住院
+    source: his
+    table: MEDREC.PAT_VISIT
+    date_col: ADMISSION_DATE_TIME
+    note: |
+      病案首页主记录 76.5 万条。注意：按「入院日期」更新至 T-1，
+      但按「出院日期」最新仅到 2026-07-20 —— 病案归档滞后约 3 个月。
+      故凡以出院日期为口径的指标（出院人次、平均住院日），
+      近 3 个月数据必然不完整，须在口径卡片上明示。
+
+  - domain: 病案归档
+    source: his
+    table: MEDREC.PAT_VISIT
+    date_col: DISCHARGE_DATE_TIME
+    note: |
+      仅用于监控归档进度（不参与指标成熟度判定）。
+      实测滞后约 3 个月，是医院数据最常见的"看起来停更、其实在归档"陷阱。
+
+  - domain: 门诊
+    source: his
+    table: OUTPBILL.OUTP_BILL_ITEMS
+    date_col: VISIT_DATE
+    note: 门诊费用明细 4386 万行；含脏日期 1900-01-01
+
+  - domain: 费用
+    source: his
+    table: INPBILL.INP_BILL_DETAIL
+    date_col: BILLING_DATE_TIME
+    note: 住院费用明细 5550 万行
+
+  - domain: DRG
+    source: his
+    table: HONLIVHP.DRG_DETAIL
+    date_col: DISCHARGE_DATE
+    note: 实测止于 2019-06，MVP 不可用
+
+  - domain: 报表层
+    source: his
+    table: REPORT.RPT_DEPT_DAY
+    date_col: RPT_DATE
+    note: 实测止于 2024-10，仅作口径对账基准
+
+  # 待补：床位域（REPORT.BED_USE_INFO 的日期列尚未探明）
+  # - domain: 床位
+  #   source: his
+  #   table: REPORT.BED_USE_INFO
+  #   date_col: ???
+
+  # 多源示例（LIS 接入时照此加，并把 sources.yaml 里 lis.enabled 打开）：
+  # - domain: 检验
+  #   source: lis
+  #   table: LAB.RESULT_MAIN
+  #   date_col: REPORT_DATE_TIME
+  #   note: 检验结果主表；接入前先跑只读盘点确认表名与时效列

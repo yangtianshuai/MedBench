@@ -1,0 +1,330 @@
+# ────────────────────────────────────────────────────────────
+# Few-shot 示例库（G2 消融的实验条件，也是复杂问法的口径示范）
+#
+# ★ 两条设计纪律，别推翻：
+#   1. **结构示例（structure）不写真实指标 code**，只演示 DSL 形状。
+#      给真实 code 的话，模型会照抄示例里的指标 —— 问「门诊收入」却输出
+#      「出院人次」，而且 DSL 完全合法，校验层拦不住。
+#   2. **口径示例（caliber）只在它的指标进入候选后才注入**。
+#      否则同样会诱导模型从一个"看着很官方"的示例里挑指标。
+#
+# ★ 数量不是目标，覆盖矩阵才是：
+#   intent（query/compare/rank/trend/attribution/meta/out_of_scope）
+#   × 变体（带对比期 / 带过滤 / 带去重 / 带维度 / 绝对区间）
+#   新增示例请先跑：python engine/fewshot.py --selftest
+# ────────────────────────────────────────────────────────────
+version: 1
+
+policy:
+  max_examples: 4        # 每次注入总条数（多了稀释注意力、推高 token）
+  structure: 2           # 结构示例固定条数
+  max_caliber: 3         # 口径示例上限
+
+examples:
+  # ── 结构示例：只教形状，不含任何真实指标 code ──────────────
+  - id: EX-S01
+    kind: structure
+    teaches: 排名题必须有 dimensions + top_n + order_by
+    question: 各科室<指标名>排名前 10
+    tags: [rank, topn, dept]
+    dsl:
+      intent: rank
+      metrics: ["<指标code>"]
+      dimensions: ["dept"]
+      filters: []
+      time: {granularity: month, range: {type: last_month}, compare: none}
+      options: {top_n: 10, order_by: {metric: "<指标code>", dir: desc}}
+
+  - id: EX-S02
+    kind: structure
+    teaches: 同比是 compare=yoy，不要新增指标、不要改时间范围
+    question: <指标名>同比怎么样
+    tags: [compare, yoy]
+    dsl:
+      intent: compare
+      metrics: ["<指标code>"]
+      dimensions: []
+      filters: []
+      time: {granularity: month, range: {type: last_month}, compare: yoy}
+      options: {}
+
+  - id: EX-S03
+    kind: structure
+    teaches: 具体年月必须是绝对区间，且 end 为「含当天」的月末
+    question: 2025 年 7 月的<指标名>
+    tags: [absolute, month]
+    dsl:
+      intent: query_metric
+      metrics: ["<指标code>"]
+      dimensions: []
+      filters: []
+      time:
+        granularity: month
+        range: {type: absolute, start: "2025-07-01", end: "2025-07-31"}
+        compare: none
+      options: {}
+
+  - id: EX-S04
+    kind: structure
+    teaches: 候选里没有该指标 → out_of_scope，不要反问范围、不要编造
+    question: 患者满意度评分是多少
+    tags: [out_of_scope]
+    dsl:
+      intent: out_of_scope
+
+  - id: EX-S05
+    kind: structure
+    teaches: 趋势题用 trend + 连续 N 个月，granularity 决定按什么粒度出点
+    question: 近半年<指标名>的趋势
+    tags: [trend, months]
+    dsl:
+      intent: trend
+      metrics: ["<指标code>"]
+      dimensions: []
+      filters: []
+      time: {granularity: month, range: {type: last_n_months, n: 6}, compare: none}
+      options: {}
+
+  - id: EX-S06
+    kind: structure
+    teaches: 点名科室是 filters（过滤），不是 dimensions（分组）
+    question: 心内科上个月的<指标名>
+    tags: [filter, dept]
+    dsl:
+      intent: query_metric
+      metrics: ["<指标code>"]
+      dimensions: []
+      filters: [{field: dept, op: "=", value: "<科室码>"}]
+      time: {granularity: month, range: {type: last_month}, compare: none}
+      options: {}
+
+  # ── 口径示例：真实 code，只在候选命中时注入 ────────────────
+  - id: EX-C01
+    kind: caliber
+    teaches: 人次类指标的最小形态（不传口径即取默认）
+    question: 上个月全院出院人次是多少
+    tags: [query_metric, simple]
+    dsl:
+      intent: query_metric
+      metrics: ["ip_discharge_cnt"]
+      dimensions: []
+      filters: []
+      time: {granularity: month, range: {type: last_month}, compare: none}
+      options: {}
+
+  - id: EX-C02
+    kind: caliber
+    teaches: 「怎么样」= 环比，"compare" 不要写成 intent
+    question: 上个月住院收入怎么样
+    tags: [query_metric, mom]
+    dsl:
+      intent: query_metric
+      metrics: ["ip_revenue"]
+      dimensions: []
+      filters: []
+      time: {granularity: month, range: {type: last_month}, compare: mom}
+      options: {}
+
+  - id: EX-C03
+    kind: caliber
+    teaches: 医保是上位概念（职工+居民），用 != 自费 而不是 = 某一种
+    question: 医保患者上个月门诊人次多少
+    tags: [query_metric, filter, pay_type]
+    dsl:
+      intent: query_metric
+      metrics: ["op_visit_cnt"]
+      dimensions: []
+      filters: [{field: pay_type, op: "!=", value: 自费}]
+      time: {granularity: month, range: {type: last_month}, compare: none}
+      options: {}
+
+  - id: EX-C04
+    kind: caliber
+    teaches: 急诊是「就诊类型」，不是急诊科这个科室
+    question: 上个月急诊人次多少
+    tags: [query_metric, filter, visit_type]
+    dsl:
+      intent: query_metric
+      metrics: ["op_visit_cnt"]
+      dimensions: []
+      filters: [{field: visit_type, op: "=", value: 急诊}]
+      time: {granularity: month, range: {type: last_month}, compare: none}
+      options: {}
+
+  - id: EX-C05
+    kind: caliber
+    teaches: 「多少患者」= 去重人数，不是人次
+    question: 上个月门诊看了多少患者
+    tags: [query_metric, dedup]
+    dsl:
+      intent: query_metric
+      metrics: ["op_patient_cnt"]
+      dimensions: []
+      filters: []
+      time: {granularity: month, range: {type: last_month}, compare: none}
+      options: {dedup: patients}
+
+  - id: EX-C06
+    kind: caliber
+    teaches: ratio 指标排名（平均住院日）— 不要自己写公式
+    question: 各科室平均住院日排名前 10
+    tags: [rank, topn, ratio]
+    dsl:
+      intent: rank
+      metrics: ["ip_los_avg"]
+      dimensions: ["dept"]
+      filters: []
+      time: {granularity: month, range: {type: last_month}, compare: none}
+      options: {top_n: 10, order_by: {metric: ip_los_avg, dir: desc}}
+
+  - id: EX-C07
+    kind: caliber
+    teaches: 问口径 → meta_question，不查数
+    question: 药占比到底是怎么算的
+    tags: [meta_question]
+    dsl:
+      intent: meta_question
+      metrics: ["drug_rate"]
+
+  - id: EX-C08
+    kind: caliber
+    teaches: 点名科室用 filters，value 写码值（枚举里给的 code）
+    question: 心内科上个月出院人次
+    tags: [query_metric, filter, dept]
+    dsl:
+      intent: query_metric
+      metrics: ["ip_discharge_cnt"]
+      dimensions: []
+      filters: [{field: dept, op: "=", value: CARD}]
+      time: {granularity: month, range: {type: last_month}, compare: none}
+      options: {}
+
+  - id: EX-C09
+    kind: caliber
+    teaches: 「同比」= compare 里的 yoy，时间范围仍是本期
+    question: 今年手术量同比怎么样
+    tags: [compare, yoy]
+    dsl:
+      intent: compare
+      metrics: ["surgery_cnt"]
+      dimensions: []
+      filters: []
+      time: {granularity: month, range: {type: year_to_date}, compare: yoy}
+      options: {}
+
+  - id: EX-C10
+    kind: caliber
+    teaches: 趋势题：trend + last_n_months + 月粒度
+    question: 近半年出院人次趋势
+    tags: [trend, months]
+    dsl:
+      intent: trend
+      metrics: ["ip_discharge_cnt"]
+      dimensions: []
+      filters: []
+      time: {granularity: month, range: {type: last_n_months, n: 6}, compare: none}
+      options: {}
+
+  - id: EX-C11
+    kind: caliber
+    teaches: 「各院区对比」= dimensions 取 campus，不是 filters
+    question: 本月各院区门诊人次对比
+    tags: [compare, campus]
+    dsl:
+      intent: compare
+      metrics: ["op_visit_cnt"]
+      dimensions: ["campus"]
+      filters: []
+      time: {granularity: month, range: {type: current_month}, compare: none}
+      options: {}
+
+  - id: EX-C12
+    kind: caliber
+    teaches: 「医生排名」的维度是 doctor，不是 dept
+    question: 全院医生手术量排名前 20
+    tags: [rank, topn, doctor]
+    dsl:
+      intent: rank
+      metrics: ["surgery_cnt"]
+      dimensions: ["doctor"]
+      filters: []
+      time: {granularity: month, range: {type: last_month}, compare: none}
+      options: {top_n: 20, order_by: {metric: surgery_cnt, dir: desc}}
+
+  - id: EX-C13
+    kind: caliber
+    teaches: 「为什么涨了」= attribution，维度保留到科室才能归因
+    question: 为什么上个月住院次均费用涨了
+    tags: [attribution, dept]
+    dsl:
+      intent: attribution
+      metrics: ["ip_avg_fee"]
+      dimensions: ["dept"]
+      filters: []
+      time: {granularity: month, range: {type: last_month}, compare: mom}
+      options: {}
+
+  - id: EX-C14
+    kind: caliber
+    teaches: 「占比」类指标直接引用，不要拆成分子分母
+    question: 上个月四级手术占比多少
+    tags: [query_metric, ratio]
+    dsl:
+      intent: query_metric
+      metrics: ["surgery_level4_rate"]
+      dimensions: []
+      filters: []
+      time: {granularity: month, range: {type: last_month}, compare: none}
+      options: {}
+
+  - id: EX-C15
+    kind: caliber
+    teaches: 耗占比单位是「元/百元」，不要按百分比理解
+    question: 上个月耗占比是多少
+    tags: [query_metric, ratio]
+    dsl:
+      intent: query_metric
+      metrics: ["material_rate"]
+      dimensions: []
+      filters: []
+      time: {granularity: month, range: {type: last_month}, compare: none}
+      options: {}
+
+  - id: EX-C16
+    kind: caliber
+    teaches: 英文缩写指标（CMI）直接按 code 选，不要翻译成中文名再猜
+    question: 上个月 CMI 是多少
+    tags: [query_metric, drg]
+    dsl:
+      intent: query_metric
+      metrics: ["cmi"]
+      dimensions: []
+      filters: []
+      time: {granularity: month, range: {type: last_month}, compare: none}
+      options: {}
+
+  - id: EX-C17
+    kind: caliber
+    teaches: 质控指标（再入院率）按默认口径出数，不反问时间窗口
+    question: 上个月 31 日非计划再入院率
+    tags: [query_metric, quality]
+    dsl:
+      intent: query_metric
+      metrics: ["unplanned_readmit_31d_rate"]
+      dimensions: []
+      filters: []
+      time: {granularity: month, range: {type: last_month}, compare: none}
+      options: {}
+
+  - id: EX-C18
+    kind: caliber
+    teaches: 「死亡率」默认院内死亡口径，不追问是否含随访
+    question: 上个月院内死亡率多少
+    tags: [query_metric, quality]
+    dsl:
+      intent: query_metric
+      metrics: ["inpatient_death_rate"]
+      dimensions: []
+      filters: []
+      time: {granularity: month, range: {type: last_month}, compare: none}
+      options: {}

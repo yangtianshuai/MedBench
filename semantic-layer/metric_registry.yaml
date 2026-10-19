@@ -1,0 +1,936 @@
+# ============================================================
+# 医院智能问数 · 自研轻量语义层（MVP 推荐）
+# version: 1.0
+# 说明：LLM 只输出查询 DSL，由本注册表的消费方（语义层服务）生成 SQL。
+#       LLM 不得直接引用本文件中的表达式，只能引用 code。
+# ============================================================
+
+version: "1.0"
+hospital: "示例三甲医院"
+last_updated: "2026-10-14"
+
+# ────────────────────────────────────────────────────────────
+# 公共维度
+# ────────────────────────────────────────────────────────────
+dimensions:
+  # ★ resolve（维度解析方式，必读）：
+  #   fact（默认）→ 维度列直接长在事实表上，不出 JOIN。
+  #                 例：SELECT f.discharge_dept_code AS dept_code
+  #   join        → 按下面 relations 声明的连接条件 LEFT JOIN 维表，输出中文名。
+  #                 例：LEFT JOIN dim_department d1 ON f.discharge_dept_code = d1.dept_code
+  #                     SELECT d1.dept_name AS dept
+  #   切换为 join 的前提：① relations 里声明了关系 ② 物理映射里有这张维表。
+  #   两者缺一，编译器会**直接报错**，不会拼出一条看似正常却查不出数的 SQL。
+  - code: dept
+    name: 科室
+    type: categorical
+    table: dim_department
+    resolve: fact
+    expr: dept_code
+    label_expr: dept_name
+    alias: [科室, 临床科室, 病区, 部门, 哪个科]
+    # ★ enum 有两个用途：
+    #   1) 前端下拉/校验（过滤值必须在枚举内）
+    #   2) 反问引擎判定「问题中是否提到了具体科室」（AMB-004 的触发器）
+    #      注意：『各科室』是分组维度，不在枚举内，因此不会误触发归属反问。
+    enum: [心内科, 呼吸内科, 呼吸科, 神经外科, 骨科, 普外科, 泌尿外科,
+           妇科, 产科, 儿科, 急诊科, 肿瘤科, 重症医学科, ICU, 麻醉科,
+           检验科, 影像科, 心内科CCU]
+    enum_map:
+      心内科: CARD
+      心内科CCU: CARD
+      呼吸内科: RESP
+      呼吸科: RESP
+      神经外科: NEUROS
+      骨科: ORTHO
+      普外科: GS
+      泌尿外科: URO
+      妇科: GYN
+      产科: OB
+      儿科: PED
+      急诊科: EM
+      肿瘤科: ONC
+      重症医学科: ICU
+      ICU: ICU
+      麻醉科: ANES
+      检验科: LAB
+      影像科: RAD
+    hierarchy: [campus, dept_group, dept]
+    supports_basis: [order, exec, belong]
+
+  - code: campus
+    name: 院区
+    type: categorical
+    table: dim_department
+    resolve: fact
+    expr: campus_code
+    label_expr: campus_name
+    alias: [院区, 分院, 本部和分院, 东院, 西院]
+
+  - code: doctor
+    name: 医师
+    type: categorical
+    table: dim_doctor
+    # 切 join 后输出 doctor_name（当前 fact 模式输出 doctor_id）。
+    # 前提：物理映射的 tables 里必须能落到真实的医师维表 —— 编译器只校验"关系声明"，
+    # 不校验"维表在库里是否存在"，缺映射会由数据库报"表不存在"，上线前必须先在目标库验证。
+    resolve: fact
+    expr: doctor_id
+    label_expr: doctor_name
+    alias: [医生, 医师, 主刀, 主管医师, 大夫]
+    sensitivity: restricted   # 涉及个人绩效，需授权
+
+  - code: pay_type
+    name: 费别
+    type: categorical
+    expr: pay_type_code
+    label_expr: pay_type_name
+    alias: [费别, 医保类型, 自费还是医保, 支付方式]
+    enum: [自费, 职工医保, 居民医保, 新农合, 商保, 公费]
+
+  - code: visit_type
+    name: 就诊类型
+    type: categorical
+    expr: visit_type_code
+    label_expr: visit_type_name
+    alias: [门诊类型, 号别, 普通还是专家]
+    enum: [普通门诊, 专家门诊, 急诊, 便民门诊, 互联网门诊]
+
+  - code: discharge_type
+    name: 离院方式
+    type: categorical
+    expr: discharge_type_code
+    label_expr: discharge_type_name
+    enum: [医嘱离院, 医嘱转院, 医嘱转社区, 非医嘱离院, 死亡, 其他]
+
+  - code: stat_date
+    name: 统计日期
+    type: time
+    granularity: [day, week, month, quarter, year]
+    expr: stat_date
+
+  - code: gender
+    name: 性别
+    type: categorical
+    expr: gender_code
+    enum: [男, 女, 未知]
+
+  - code: age_band
+    name: 年龄段
+    type: categorical
+    expr: age_band_code
+    enum: [0-14, 15-44, 45-59, 60-74, 75-89, 90+]
+
+# ────────────────────────────────────────────────────────────
+# 关系（事实表 → 维表）
+#
+# 只在对应维度声明 `resolve: join` 时生效；默认 resolve: fact 时本段是"备用声明"，
+# 不影响生成的 SQL。这样多院交付可以一个个维度逐步切，不必一次改到底。
+#
+# ★ 三条硬规则（编译器强制，写错就报错，不会静默放行）：
+#   1. 只允许 type: many_to_one / one_to_one。事实→事实、一对多一律拒绝
+#      —— 一对多 JOIN 会把一行拉成多行，指标静默放大。
+#   2. 连接条件可以随科室口径分档（join_on 下按 dept_basis 写）。当前口径没声明就报错，
+#      绝不拿别的口径凑 —— 按开单科统计却用归属科 JOIN，数会整体偏，且不报错。
+#      ★ 字段名是 join_on 而不是 on：YAML 1.1 会把裸写的 `on:` 解析成布尔 True，
+#        config 里读出来键名是 True 而不是 "on"，排查起来极其费时（已踩过一次）。
+#   3. 维表必须在物理映射的 tables 里存在；不存在的维表不会被"猜"成同名表。
+# ────────────────────────────────────────────────────────────
+relations:
+  # 门诊：科室（三种科室口径对应三个不同的连接键）
+  - name: fact_outpatient__dept
+    from: dwd_fact_outpatient_visit
+    dim: dept
+    to: dim_department
+    type: many_to_one
+    join_on:
+      order:  {left: order_dept_code,  right: dept_code}
+      exec:   {left: exec_dept_code,   right: dept_code}
+      belong: {left: belong_dept_code, right: dept_code}
+
+  # 住院：科室
+  - name: fact_inpatient__dept
+    from: dwd_fact_inpatient_discharge
+    dim: dept
+    to: dim_department
+    type: many_to_one
+    join_on:
+      admit:     {left: admit_dept_code,     right: dept_code}
+      discharge: {left: discharge_dept_code, right: dept_code}
+      belong:    {left: belong_dept_code,    right: dept_code}
+
+  # 院区：维表同上，但连接键是院区列（与科室是两条不同的路径，必须分开声明）
+  - name: fact_outpatient__campus
+    from: dwd_fact_outpatient_visit
+    dim: campus
+    to: dim_department
+    type: many_to_one
+    on_default: {left: campus_code, right: campus_code}
+
+  - name: fact_inpatient__campus
+    from: dwd_fact_inpatient_discharge
+    dim: campus
+    to: dim_department
+    type: many_to_one
+    on_default: {left: campus_code, right: campus_code}
+
+  # 医师（不随科室口径变化 → 用 on_default）
+  - name: fact_inpatient__doctor
+    from: dwd_fact_inpatient_discharge
+    dim: doctor
+    to: dim_doctor
+    type: many_to_one
+    on_default: {left: doctor_id, right: doctor_id}
+
+  - name: fact_operation__doctor
+    from: dwd_fact_operation
+    dim: doctor
+    to: dim_doctor
+    type: many_to_one
+    on_default: {left: doctor_id, right: doctor_id}
+
+# ────────────────────────────────────────────────────────────
+# 原子度量（Measures）
+# ────────────────────────────────────────────────────────────
+measures:
+
+  # ===== 门诊域 =====
+  - code: op_visit_cnt
+    name: 门诊人次
+    domain: 门诊运营
+    table: dwd_fact_outpatient_visit
+    agg: sum
+    expr: is_valid_visit
+    date_basis:
+      default: visit
+      supported: [reg, visit, settle]
+      expr_map:
+        reg: reg_date
+        visit: visit_date
+        settle: settle_date
+    dept_basis:
+      default: belong
+      supported: [order, exec, belong]
+      expr_map:
+        order: order_dept_code
+        exec: exec_dept_code
+        belong: belong_dept_code
+    dedup: visits
+    dedup_key: patient_id
+    unit: 人次
+    filters:
+      - {field: is_valid_visit, op: "=", value: 1}
+
+  - code: op_patient_cnt
+    name: 门诊人数
+    domain: 门诊运营
+    table: dwd_fact_outpatient_visit
+    agg: count_distinct
+    expr: patient_id
+    date_basis:
+      default: visit
+      supported: [visit, settle]
+      expr_map: {visit: visit_date, settle: settle_date}
+    dept_basis:
+      default: belong
+      supported: [order, belong]
+      expr_map: {order: order_dept_code, belong: belong_dept_code}
+    dedup: patients
+    unit: 人
+
+  - code: op_revenue
+    name: 门诊收入
+    domain: 收入
+    table: dwd_fact_outpatient_visit
+    agg: sum
+    expr: total_fee
+    date_basis:
+      default: settle
+      supported: [settle, visit]
+      expr_map: {settle: settle_date, visit: visit_date}
+    dept_basis:
+      default: order
+      supported: [order, belong]
+      expr_map: {order: order_dept_code, belong: belong_dept_code}
+    unit: 元
+    sensitivity: restricted
+
+  - code: op_drug_fee
+    name: 门诊药品费用
+    domain: 收入
+    table: dwd_fact_outpatient_visit
+    agg: sum
+    expr: drug_fee
+    date_basis:
+      default: settle
+      supported: [settle]
+      expr_map: {settle: settle_date}
+    dept_basis:
+      default: order
+      supported: [order]
+      expr_map: {order: order_dept_code}
+    unit: 元
+
+  # ===== 住院域 =====
+  - code: ip_discharge_cnt
+    name: 出院人次
+    domain: 住院运营
+    table: dwd_fact_inpatient_discharge
+    agg: count
+    expr: visit_id
+    date_basis:
+      default: discharge
+      supported: [admit, discharge, settle]
+      expr_map:
+        admit: admit_date
+        discharge: discharge_date
+        settle: settle_date
+    dept_basis:
+      default: discharge
+      supported: [admit, discharge, belong]
+      expr_map:
+        admit: admit_dept_code
+        discharge: discharge_dept_code
+        belong: belong_dept_code
+    dedup: visits
+    dedup_key: patient_id
+    unit: 人次
+
+  - code: ip_admit_cnt
+    name: 入院人次
+    domain: 住院运营
+    table: dwd_fact_inpatient_discharge
+    agg: count
+    expr: visit_id
+    date_basis:
+      default: admit
+      supported: [admit, discharge]
+      expr_map: {admit: admit_date, discharge: discharge_date}
+    dept_basis:
+      default: admit
+      supported: [admit, belong]
+      expr_map: {admit: admit_dept_code, belong: belong_dept_code}
+    unit: 人次
+
+  - code: ip_occupy_bed_days
+    name: 出院者占用总床日数
+    domain: 住院运营
+    table: dwd_fact_inpatient_discharge
+    agg: sum
+    expr: occupy_bed_days
+    date_basis:
+      default: discharge
+      supported: [discharge]
+      expr_map: {discharge: discharge_date}
+    dept_basis:
+      default: discharge
+      supported: [discharge, belong]
+      expr_map: {discharge: discharge_dept_code, belong: belong_dept_code}
+    unit: 床日
+
+  - code: ip_revenue
+    name: 住院收入
+    domain: 收入
+    table: dwd_fact_inpatient_discharge
+    agg: sum
+    expr: total_fee
+    date_basis:
+      default: settle
+      supported: [settle, discharge]
+      expr_map: {settle: settle_date, discharge: discharge_date}
+    dept_basis:
+      default: discharge
+      supported: [discharge, belong]
+      expr_map: {discharge: discharge_dept_code, belong: belong_dept_code}
+    unit: 元
+    sensitivity: restricted
+
+  - code: ip_drug_fee
+    name: 住院药品费用
+    domain: 收入
+    table: dwd_fact_inpatient_discharge
+    agg: sum
+    expr: drug_fee
+    date_basis:
+      default: settle
+      supported: [settle]
+      expr_map: {settle: settle_date}
+    dept_basis:
+      default: discharge
+      supported: [discharge]
+      expr_map: {discharge: discharge_dept_code}
+    unit: 元
+
+  - code: ip_material_fee
+    name: 住院耗材费用
+    domain: 收入
+    table: dwd_fact_inpatient_discharge
+    agg: sum
+    expr: material_fee
+    date_basis:
+      default: settle
+      supported: [settle]
+      expr_map: {settle: settle_date}
+    dept_basis:
+      default: exec
+      supported: [exec, discharge]
+      expr_map: {exec: exec_dept_code, discharge: discharge_dept_code}
+    unit: 元
+
+  # ===== 手术域 =====
+  - code: surgery_cnt
+    name: 手术例数
+    domain: 手术
+    table: dwd_fact_operation
+    agg: count
+    expr: operation_id
+    date_basis:
+      default: operation
+      supported: [operation, discharge]
+      expr_map: {operation: operation_date, discharge: discharge_date}
+    dept_basis:
+      default: exec
+      supported: [exec, belong]
+      expr_map: {exec: exec_dept_code, belong: belong_dept_code}
+    unit: 例
+
+  - code: surgery_level4_cnt
+    name: 四级手术例数
+    domain: 手术
+    table: dwd_fact_operation
+    agg: count
+    expr: operation_id
+    date_basis:
+      default: operation
+      supported: [operation]
+      expr_map: {operation: operation_date}
+    dept_basis:
+      default: exec
+      supported: [exec]
+      expr_map: {exec: exec_dept_code}
+    unit: 例
+    filters:
+      - {field: operation_level, op: "=", value: "4"}
+
+  # ===== DRG 域 =====
+  - code: drg_weight_sum
+    name: DRG 总权重
+    domain: 医保DRG
+    table: dwd_fact_drg_settle
+    agg: sum
+    expr: drg_weight
+    date_basis:
+      default: settle
+      supported: [settle]
+      expr_map: {settle: settle_date}
+    dept_basis:
+      default: discharge
+      supported: [discharge]
+      expr_map: {discharge: discharge_dept_code}
+    unit: 权重
+
+  # ===== 质控域 =====
+  - code: unplanned_readmit_31d_cnt
+    name: 31日内非计划再入院例数
+    domain: 医疗质控
+    table: dwd_fact_inpatient_discharge
+    agg: sum
+    expr: is_unplanned_readmit_31d
+    date_basis:
+      default: discharge
+      supported: [discharge]
+      expr_map: {discharge: discharge_date}
+    dept_basis:
+      default: discharge
+      supported: [discharge, belong]
+      expr_map: {discharge: discharge_dept_code, belong: belong_dept_code}
+    unit: 例
+
+  - code: inpatient_death_cnt
+    name: 院内死亡例数
+    domain: 医疗质控
+    table: dwd_fact_inpatient_discharge
+    agg: sum
+    expr: is_death_in_hospital
+    date_basis:
+      default: discharge
+      supported: [discharge]
+      expr_map: {discharge: discharge_date}
+    dept_basis:
+      default: discharge
+      supported: [discharge]
+      expr_map: {discharge: discharge_dept_code}
+    unit: 例
+    sensitivity: restricted
+
+# ────────────────────────────────────────────────────────────
+# 指标（Metrics）：atomic 直接引用 measure；ratio 必须声明分子分母
+# ────────────────────────────────────────────────────────────
+metrics:
+
+  # ---- 原子指标 ----
+  - code: inpatient_death_cnt
+    name: 院内死亡例数
+    type: atomic
+    measure: inpatient_death_cnt
+    domain: 医疗质控
+    unit: 例
+    sensitivity: restricted
+    alias: [死亡, 院内死亡, 死亡例数]
+    business_definition: 一定时期内在本院住院期间死亡的患者人次
+    default_date_basis: discharge
+    default_dept_basis: discharge
+    dedup: visits
+    dimensions: [dept]
+    default_granularity: month
+    owner: 医务处
+    version: 1.0.0
+    status: published
+
+  - code: op_visit_cnt
+    name: 门诊人次
+    type: atomic
+    measure: op_visit_cnt
+    domain: 门诊运营
+    unit: 人次
+    alias: [门诊量, 门诊人数, 门诊人次, 门急诊量, 看了多少人, 门诊接诊量]
+    # 急诊人次走同一张门诊事实表 + visit_type=急诊 过滤，因此必须能被「急诊」召回
+    keywords: [门急诊, 急诊人次, 急诊量, 急诊就诊]
+    business_definition: 一定时期内到本院门诊就诊的有效人次数（不含退号）
+    default_date_basis: visit
+    default_dept_basis: belong
+    dedup: visits
+    dimensions: [dept, campus, doctor, visit_type, pay_type, gender, age_band]
+    default_granularity: month
+    owner: 门诊部
+    version: 1.0.0
+    status: published
+    sensitivity: internal
+
+  - code: ip_discharge_cnt
+    name: 出院人次
+    type: atomic
+    measure: ip_discharge_cnt
+    domain: 住院运营
+    unit: 人次
+    alias: [出院人数, 出院量, 出院人次, 出院患者数, 出院病人]
+    business_definition: 一定时期内办理出院手续的患者人次数
+    default_date_basis: discharge
+    default_dept_basis: discharge
+    dimensions: [dept, campus, doctor, pay_type, discharge_type]
+    default_granularity: month
+    owner: 医务处
+    version: 1.0.0
+    status: published
+    sensitivity: internal
+
+  - code: ip_admit_cnt
+    name: 入院人次
+    type: atomic
+    measure: ip_admit_cnt
+    domain: 住院运营
+    unit: 人次
+    alias: [入院人数, 收治量, 收治人次, 入院患者数]
+    business_definition: 一定时期内办理入院手续的患者人次数
+    default_date_basis: admit
+    default_dept_basis: admit
+    dimensions: [dept, campus, pay_type]
+    default_granularity: month
+    owner: 医务处
+    version: 1.0.0
+    status: published
+    sensitivity: internal
+
+  - code: op_patient_cnt
+    name: 门诊人数
+    type: atomic
+    measure: op_patient_cnt
+    domain: 门诊运营
+    unit: 人
+    alias: [门诊人数, 门诊去重人数, 门诊患者数]
+    business_definition: 一定时期内到门诊就诊的去重患者数
+    default_date_basis: visit
+    default_dept_basis: belong
+    dedup: patients
+    dimensions: [dept, campus, visit_type, pay_type, gender, age_band]
+    default_granularity: month
+    owner: 门诊部
+    version: 1.0.0
+    status: published
+    sensitivity: internal
+
+  - code: ip_occupy_bed_days
+    name: 出院者占用总床日数
+    type: atomic
+    measure: ip_occupy_bed_days
+    domain: 住院运营
+    unit: 床日
+    alias: [占用床日数, 出院者占用床日, 实际占用床日]
+    business_definition: 出院患者实际占用床日之和，是平均住院日的分子
+    default_date_basis: discharge
+    default_dept_basis: discharge
+    dimensions: [dept, campus]
+    default_granularity: month
+    owner: 医务处
+    version: 1.0.0
+    status: published
+    sensitivity: internal
+
+  - code: op_revenue
+    name: 门诊收入
+    type: atomic
+    measure: op_revenue
+    domain: 收入
+    unit: 元
+    alias: [门诊收入, 门诊医疗收入, 门诊营收]
+    business_definition: 门诊医疗收入合计（含药品，不含其他收入与财政补助）
+    default_date_basis: settle
+    default_dept_basis: order
+    dimensions: [dept, campus, pay_type, visit_type]
+    default_granularity: month
+    owner: 财务处
+    version: 1.0.0
+    status: published
+    sensitivity: restricted
+    notes: |
+      按【结算日期】统计。当月数据未结算落定，为 provisional。
+
+  - code: ip_revenue
+    name: 住院收入
+    type: atomic
+    measure: ip_revenue
+    domain: 收入
+    unit: 元
+    alias: [住院收入, 住院医疗收入, 住院营收]
+    business_definition: 住院医疗收入合计（含药品，不含其他收入与财政补助）
+    default_date_basis: settle
+    default_dept_basis: discharge
+    dimensions: [dept, campus, pay_type, discharge_type]
+    default_granularity: month
+    owner: 财务处
+    version: 1.0.0
+    status: published
+    sensitivity: restricted
+    notes: |
+      按【结算日期】统计，与按出院日期统计的结果会有差异，回显时必须标注口径。
+
+  - code: surgery_cnt
+    name: 手术例数
+    type: atomic
+    measure: surgery_cnt
+    domain: 手术
+    unit: 例
+    alias: [手术量, 手术例数, 手术台次, 做了多少手术]
+    business_definition: 一定时期内完成的手术操作例数
+    default_date_basis: operation
+    default_dept_basis: exec
+    dimensions: [dept, campus, doctor]
+    default_granularity: month
+    owner: 医务处
+    version: 1.0.0
+    status: published
+    sensitivity: internal
+    notes: |
+      默认含介入操作。仅统计主手术需另行确认（见 AMB-007）。
+
+  - code: surgery_level4_cnt
+    name: 四级手术例数
+    type: atomic
+    measure: surgery_level4_cnt
+    domain: 手术
+    unit: 例
+    alias: [四级手术例数, 四级手术量, 高难度手术例数]
+    business_definition: 手术级别为四级的手术例数
+    default_date_basis: operation
+    default_dept_basis: exec
+    dimensions: [dept, campus, doctor]
+    default_granularity: month
+    owner: 医务处
+    version: 1.0.0
+    status: published
+    sensitivity: internal
+
+  - code: drg_weight_sum
+    name: DRG 总权重
+    type: atomic
+    measure: drg_weight_sum
+    domain: 医保DRG
+    unit: 权重
+    alias: [DRG总权重, 总权重, DRG权重合计]
+    business_definition: 入组病例 DRG 权重之和，是 CMI 的分子
+    default_date_basis: settle
+    default_dept_basis: discharge
+    dimensions: [dept, campus, pay_type]
+    default_granularity: month
+    owner: 医保办
+    version: 1.0.0
+    status: published
+    sensitivity: internal
+
+  # ---- 复合指标（ratio）----
+  - code: ip_los_avg
+    name: 平均住院日
+    type: ratio
+    unit: 天
+    domain: 住院运营
+    formula: "ip_occupy_bed_days / ip_discharge_cnt"
+    numerator: ip_occupy_bed_days
+    denominator: ip_discharge_cnt
+    precision: 2
+    alias: [平均住院日, 平均住院天数, 平均住院长度, 住院天数, ALOS, 平均住多久]
+    business_definition: 一定时期内出院者占用总床日数与出院人次之比
+    default_date_basis: discharge
+    default_dept_basis: discharge
+    agg_method: ratio          # ★ 先分别聚合再相除，禁止对自身求平均
+    dimensions: [dept, campus, doctor, pay_type, discharge_type]
+    default_granularity: month
+    owner: 医务处
+    tech_owner: 数据组
+    version: 1.0.0
+    status: published
+    sensitivity: internal
+    notes: |
+      1. 分子必须是「出院者占用总床日数」，不是 SUM(出院日 - 入院日)。
+      2. 跨科转科患者按科室分摊床日；转科不产生新的出院记录。
+      3. 按科室汇总时，全院值 = 全院床日 / 全院出院人次，
+         ≠ 各科室平均住院日的算术平均（这是最常见的错误）。
+
+  - code: op_avg_fee
+    name: 门诊次均费用
+    type: ratio
+    unit: 元
+    domain: 收入
+    formula: "op_revenue / op_visit_cnt"
+    numerator: op_revenue
+    denominator: op_visit_cnt
+    precision: 2
+    alias: [次均费用, 门诊人均费用, 每门诊人次费用, 门诊次均, 看一次病多少钱]
+    business_definition: 门诊收入与门诊人次之比
+    default_date_basis: settle
+    default_dept_basis: order
+    agg_method: ratio
+    dimensions: [dept, campus, pay_type, visit_type]
+    default_granularity: month
+    owner: 财务处
+    version: 1.0.0
+    status: published
+    sensitivity: restricted
+    notes: |
+      分子按【结算日期】、分母按【就诊日期】，跨月会有轻微口径错配，
+      本院统一口径为两者均取结算日期所在月。
+
+  - code: ip_avg_fee
+    name: 住院次均费用
+    type: ratio
+    unit: 元
+    domain: 收入
+    formula: "ip_revenue / ip_discharge_cnt"
+    numerator: ip_revenue
+    denominator: ip_discharge_cnt
+    precision: 2
+    alias: [住院次均费用, 每出院人次费用, 出院患者人均费用, 住院人均花费]
+    business_definition: 住院收入与出院人次之比
+    default_date_basis: settle
+    default_dept_basis: discharge
+    agg_method: ratio
+    dimensions: [dept, campus, pay_type, discharge_type]
+    default_granularity: month
+    owner: 财务处
+    version: 1.0.0
+    status: published
+    sensitivity: restricted
+
+  - code: drug_rate
+    name: 药占比
+    type: ratio
+    unit: "%"
+    domain: 收入
+    formula: "(op_drug_fee + ip_drug_fee) / (op_revenue + ip_revenue) * 100"
+    numerator: [op_drug_fee, ip_drug_fee]
+    denominator: [op_revenue, ip_revenue]
+    precision: 2
+    alias: [药占比, 药品收入占比, 药品比例]
+    business_definition: 药品收入占医疗收入的比例
+    default_date_basis: settle
+    default_dept_basis: order
+    agg_method: ratio
+    dimensions: [dept, campus, pay_type]
+    default_granularity: month
+    owner: 药学部
+    version: 1.0.0
+    status: published
+    sensitivity: restricted
+    notes: |
+      ★ 本院口径：
+        - 分子含西药 + 中成药，**不含中草药**（单独指标 herb_rate）
+        - 分母 = 医疗收入（不含其他收入、不含财政补助）
+        - 门诊 + 住院合并计算
+      ★ 与国家卫健委考核口径差异：国家口径含中草药。
+        报表导出时需同时提供「院内口径」与「国家考核口径」两份。
+
+  - code: material_rate
+    name: 百元医疗收入消耗的卫生材料费用
+    type: ratio
+    unit: 元/百元
+    domain: 收入
+    formula: "ip_material_fee / ip_revenue * 100"
+    numerator: ip_material_fee
+    denominator: ip_revenue
+    precision: 2
+    alias: [耗占比, 百元医疗收入耗材, 耗材占比]
+    business_definition: 每百元医疗收入所消耗的卫生材料费用
+    default_date_basis: settle
+    default_dept_basis: exec
+    agg_method: ratio
+    dimensions: [dept, campus]
+    default_granularity: month
+    owner: 财务处
+    version: 1.0.0
+    status: published
+    sensitivity: restricted
+
+  - code: surgery_level4_rate
+    name: 四级手术占比
+    type: ratio
+    unit: "%"
+    domain: 手术
+    formula: "surgery_level4_cnt / surgery_cnt * 100"
+    numerator: surgery_level4_cnt
+    denominator: surgery_cnt
+    precision: 2
+    alias: [四级手术占比, 四级手术比例, 高难度手术占比]
+    business_definition: 四级手术例数占全部手术例数的比例
+    default_date_basis: operation
+    default_dept_basis: exec
+    agg_method: ratio
+    dimensions: [dept, campus, doctor]
+    default_granularity: month
+    owner: 医务处
+    version: 1.0.0
+    status: published
+    sensitivity: internal
+
+  - code: cmi
+    name: 病例组合指数（CMI）
+    type: ratio
+    unit: ""
+    domain: 医保DRG
+    formula: "drg_weight_sum / ip_discharge_cnt"
+    numerator: drg_weight_sum
+    denominator: ip_discharge_cnt
+    precision: 4
+    alias: [CMI, 病例组合指数, 病例难度指数, DRG权重均值]
+    business_definition: DRG 总权重与出院人次之比，反映收治病例的平均技术难度
+    default_date_basis: settle
+    default_dept_basis: discharge
+    agg_method: ratio
+    dimensions: [dept, campus, pay_type]
+    default_granularity: month
+    owner: 医保办
+    version: 1.0.0
+    status: published
+    sensitivity: internal
+    notes: |
+      依赖 DRG 分组器版本（当前 CHS-DRG 1.1 + 本地细分组 v2.3）。
+      分组器版本升级后需重算历史，并在版本记录中标注。
+
+  - code: unplanned_readmit_31d_rate
+    name: 31日内非计划再入院率
+    type: ratio
+    unit: "%"
+    domain: 医疗质控
+    formula: "unplanned_readmit_31d_cnt / ip_discharge_cnt * 100"
+    numerator: unplanned_readmit_31d_cnt
+    denominator: ip_discharge_cnt
+    precision: 2
+    alias: [非计划再入院率, 31天重返率, 再入院率, 重返率]
+    business_definition: 出院后 31 日内因同类疾病非计划再次入院的患者占比
+    default_date_basis: discharge
+    default_dept_basis: discharge
+    agg_method: ratio
+    dimensions: [dept, campus, pay_type]
+    default_granularity: month
+    owner: 医务处
+    version: 1.0.0
+    status: published
+    sensitivity: internal
+    notes: |
+      不含计划性再入院（如化疗、 scheduled 二次手术）。
+      月末统计时，当月的"31日内"窗口尚未走完，数据为 provisional。
+
+  - code: inpatient_death_rate
+    name: 院内死亡率
+    type: ratio
+    unit: "%"
+    domain: 医疗质控
+    formula: "inpatient_death_cnt / ip_discharge_cnt * 100"
+    numerator: inpatient_death_cnt
+    denominator: ip_discharge_cnt
+    precision: 3
+    # ★ 必须包含裸「死亡率」：真实评测中「全院死亡率多少」因召回不到而被判 out_of_scope
+    alias: [院内死亡率, 住院死亡率, 病死率, 死亡率, 死亡比例]
+    business_definition: 住院期间死亡患者占出院人次的比例
+    default_date_basis: discharge
+    default_dept_basis: discharge
+    agg_method: ratio
+    dimensions: [dept, campus]
+    default_granularity: month
+    owner: 医务处
+    version: 1.0.0
+    status: published
+    sensitivity: restricted
+
+# ────────────────────────────────────────────────────────────
+# 全局默认与限制
+# ────────────────────────────────────────────────────────────
+defaults:
+  max_time_span_months: 60
+  min_cell_size: 5            # 小样本抑制阈值（不可关闭）
+  allow_future_query: false
+  max_result_rows: 100000
+  query_timeout_sec: 30
+  # 样本量计数口径：用于小样本抑制，必须基于「病例数」而非度量列
+  # 反例：COUNT(occupy_bed_days) 会把床日为 NULL 的记录漏掉，导致抑制失效
+  sample_key: visit_id        # 人次口径：一次就诊/一次出院 = 1
+  dedup_key: patient_id       # 人数口径：按患者去重
+
+permission:
+  # 敏感指标需要额外角色
+  restricted_metrics_roles: [院长, 副院长, 医务处, 运营管理部, 财务处, 医保办, 信息科, 科室主任]
+  # ★ 维度授权独立于指标授权：
+  #   doctor 维度涉及个人绩效，即使角色有权看「受限指标」，
+  #   也需单独在 restricted_dimension_roles 中才允许下钻到个人。
+  #   （曾有实现直接复用 restricted_metrics_roles，导致「维度越权」检查形同虚设）
+  restricted_dimension_roles: [院长, 副院长, 医务处, 运营管理部]
+  # 患者级字段一律禁止在问数场景出现
+  forbidden_fields: [patient_name, id_card, phone, address, contact_name]
+
+  # ── 行级权限（RLS）用哪一列 ──
+  # ★ 这里是**逻辑名**，物理映射会把它换成本数据源上真实存在的列。
+  #   写死物理列名的老写法让 SQL 引用了一个两边都不存在的列
+  #   （HIS 上是 DEPT_DISCHARGE_FROM、ADS 上是 discharge_dept_code），
+  #   而单测只断言字符串里出现过 `belong_dept_code`，所以一直"通过"；
+  #   真实库上的表现是：**任何科室级授权的人一条数都问不出来**，
+  #   而全院范围的人毫无感觉（RLS 对 ["*"] 不注入）—— 最难发现的一类故障。
+  rls:
+    # 数据主权按「患者归属科室」判定，与查询用的科室口径解耦（04 §1）
+    dept_basis: belong
+    # 院区列。数据源没物化时必须显式声明为不可用（见 physical_map_*.yaml 的 null），
+    # 否则启用院区围栏时会拼出一条必然报错的 SQL。
+    campus_column: campus_code
+
+# ────────────────────────────────────────────────────────────
+# 已知未建模指标（写在这里，防止被反复当成"漏配"来补）
+#
+# bed_usage_rate（床位使用率）
+#   常被问，但**不是补一行配置就能上**：
+#   公式 = 实际占用床日 / 实际开放床日，需要一个「按天 × 科室」的床日事实表
+#   （每天记录开放床位数与占用床位数，来源通常是床位管理系统或每日报表）。
+#   当前 DWD 只有就诊/费用事实，注册了也只能生成引用不存在列的 SQL ——
+#   那比"暂不支持"更糟：用户会看到一条报错，而不是一句可执行的申请指引。
+#   落地前置条件：
+#     ① 床位日报数据入仓（dws_bed_occupancy_daily：stat_date, dept_code, open_beds, occupied_beds）
+#     ② 分母口径签认（实际开放 vs 编制，见 ambiguity_rules.yaml AMB-008）
+#   在此之前，召回对「床位使用率」返回空候选 → 管线答「尚未覆盖 + 指标申请」，
+#   这是**正确行为**，不要在 golden 集里把它当成召回缺陷（见 eval/eval_recall.py）。
+# ────────────────────────────────────────────────────────────

@@ -1,0 +1,270 @@
+# ============================================================
+# dbt + MetricFlow 指标定义示例
+# ★ ratio 类型：MetricFlow 会先分别聚合分子分母再相除，正确。
+#   切勿使用 derived 类型对 ratio 做 avg（会导致平均值陷阱）。
+# ============================================================
+
+version: 2
+
+metrics:
+
+  # ───────── 原子指标（simple）─────────
+  - name: op_visit_cnt
+    label: 门诊人次
+    description: 一定时期内到本院门诊就诊的有效人次数（不含退号）
+    type: simple
+    type_params:
+      measure: op_visit_cnt
+    config:
+      meta:
+        alias: [门诊量, 门诊人数, 门急诊量]
+        date_basis: visit
+        dept_basis: belong
+        dedup: visits
+        unit: 人次
+        owner: 门诊部
+        sensitivity: internal
+
+  - name: op_patient_cnt
+    label: 门诊人数
+    description: 去重后的门诊患者数
+    type: simple
+    type_params:
+      measure: op_patient_cnt
+    config:
+      meta:
+        alias: [门诊人数, 门诊去重人数]
+        unit: 人
+        dedup: patients
+
+  - name: ip_discharge_cnt
+    label: 出院人次
+    description: 一定时期内办理出院手续的患者人次数
+    type: simple
+    type_params:
+      measure: ip_discharge_cnt
+    config:
+      meta:
+        alias: [出院人数, 出院量, 出院患者数]
+        date_basis: discharge
+        dept_basis: discharge
+        unit: 人次
+        owner: 医务处
+        sensitivity: internal
+
+  - name: ip_admit_cnt
+    label: 入院人次
+    type: simple
+    type_params:
+      measure: ip_admit_cnt
+    config:
+      meta:
+        alias: [入院人数, 收治量]
+        date_basis: admit
+        unit: 人次
+
+  - name: ip_occupy_bed_days
+    label: 出院者占用总床日数
+    type: simple
+    type_params:
+      measure: ip_occupy_bed_days
+    config:
+      meta:
+        unit: 床日
+        date_basis: discharge
+
+  - name: op_revenue
+    label: 门诊收入
+    type: simple
+    type_params:
+      measure: op_revenue
+    config:
+      meta:
+        unit: 元
+        date_basis: settle
+        sensitivity: restricted
+
+  - name: ip_revenue
+    label: 住院收入
+    type: simple
+    type_params:
+      measure: ip_revenue
+    config:
+      meta:
+        unit: 元
+        date_basis: settle
+        sensitivity: restricted
+
+  - name: surgery_cnt
+    label: 手术例数
+    type: simple
+    type_params:
+      measure: surgery_cnt
+    config:
+      meta:
+        unit: 例
+        date_basis: operation
+        dept_basis: exec
+
+  - name: surgery_level4_cnt
+    label: 四级手术例数
+    type: simple
+    type_params:
+      measure: surgery_level4_cnt
+    config:
+      meta:
+        unit: 例
+
+  - name: drg_weight_sum
+    label: DRG 总权重
+    type: simple
+    type_params:
+      measure: drg_weight_sum
+    config:
+      meta:
+        unit: 权重
+        date_basis: settle
+
+  # ───────── 复合指标（ratio）─────────
+  - name: ip_los_avg
+    label: 平均住院日
+    description: |
+      出院者占用总床日数 / 出院人次。
+      分子必须是占用床日数，不是 SUM(出院日-入院日)；
+      跨科转科按科室分摊床日。
+    type: ratio
+    type_params:
+      numerator: ip_occupy_bed_days
+      denominator: ip_discharge_cnt
+    config:
+      meta:
+        alias: [平均住院日, 平均住院天数, 平均住院长度, ALOS]
+        unit: 天
+        precision: 2
+        date_basis: discharge
+        dept_basis: discharge
+        agg_method: ratio
+        owner: 医务处
+        sensitivity: internal
+
+  - name: op_avg_fee
+    label: 门诊次均费用
+    description: 门诊收入 / 门诊人次
+    type: ratio
+    type_params:
+      numerator: op_revenue
+      denominator: op_visit_cnt
+    config:
+      meta:
+        alias: [次均费用, 门诊人均费用, 每门诊人次费用]
+        unit: 元
+        precision: 2
+        date_basis: settle
+        sensitivity: restricted
+
+  - name: ip_avg_fee
+    label: 住院次均费用
+    description: 住院收入 / 出院人次
+    type: ratio
+    type_params:
+      numerator: ip_revenue
+      denominator: ip_discharge_cnt
+    config:
+      meta:
+        alias: [住院次均费用, 每出院人次费用, 住院人均花费]
+        unit: 元
+        precision: 2
+        date_basis: settle
+        sensitivity: restricted
+
+  - name: surgery_level4_rate
+    label: 四级手术占比
+    description: 四级手术例数 / 手术例数 * 100
+    type: ratio
+    type_params:
+      numerator: surgery_level4_cnt
+      denominator: surgery_cnt
+    config:
+      meta:
+        alias: [四级手术占比, 四级手术比例, 高难度手术占比]
+        unit: "%"
+        precision: 2
+        date_basis: operation
+        dept_basis: exec
+
+  - name: cmi
+    label: 病例组合指数（CMI）
+    description: DRG 总权重 / 出院人次。依赖 DRG 分组器版本（CHS-DRG 1.1 + 本地细分组 v2.3）
+    type: ratio
+    type_params:
+      numerator: drg_weight_sum
+      denominator: ip_discharge_cnt
+    config:
+      meta:
+        alias: [CMI, 病例组合指数, 病例难度指数]
+        unit: ""
+        precision: 4
+        date_basis: settle
+        owner: 医保办
+
+  - name: unplanned_readmit_31d_rate
+    label: 31日内非计划再入院率
+    description: 31日内非计划再入院例数 / 出院人次 * 100
+    type: ratio
+    type_params:
+      numerator: unplanned_readmit_31d_cnt
+      denominator: ip_discharge_cnt
+    config:
+      meta:
+        alias: [非计划再入院率, 31天重返率, 再入院率]
+        unit: "%"
+        precision: 2
+        date_basis: discharge
+
+  - name: inpatient_death_rate
+    label: 院内死亡率
+    type: ratio
+    type_params:
+      numerator: inpatient_death_cnt
+      denominator: ip_discharge_cnt
+    config:
+      meta:
+        alias: [院内死亡率, 住院死亡率, 病死率]
+        unit: "%"
+        precision: 3
+        sensitivity: restricted
+
+  # ───────── 派生指标（带固定过滤）─────────
+  - name: ip_discharge_cnt_medical_insurance
+    label: 医保患者出院人次
+    description: 费别为医保的出院人次（不含自费）
+    type: simple
+    type_params:
+      measure: ip_discharge_cnt
+    filter: |
+      {{ Dimension('inpatient_discharge__pay_type') }} != '自费'
+    config:
+      meta:
+        alias: [医保出院人次, 医保患者出院量]
+        unit: 人次
+
+  - name: op_visit_cnt_emergency
+    label: 急诊人次
+    description: 就诊类型为急诊的门诊人次
+    type: simple
+    type_params:
+      measure: op_visit_cnt
+    filter: |
+      {{ Dimension('outpatient_visit__visit_type') }} = '急诊'
+    config:
+      meta:
+        alias: [急诊量, 急诊人次, 急诊接诊量]
+        unit: 人次
+
+# ───────── 说明 ─────────
+# 1. ratio 类型是正确性的关键：MetricFlow 生成
+#      SUM(numerator) / NULLIF(SUM(denominator), 0)
+#    而非 AVG(ratio)，避免了「平均值的平均值」陷阱。
+# 2. date_basis / dept_basis 通过 config.meta 携带，
+#    由上层问数服务读取后选择对应维度（MetricFlow 无原生支持）。
+# 3. alias 用于向量检索与 BM25 召回，是问数准确率的关键资产。
